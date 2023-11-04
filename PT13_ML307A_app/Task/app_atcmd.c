@@ -70,6 +70,7 @@ static int16_t getatcmdid(uint8_t *cmdstr)
 static void doAtdebugCmd(uint8_t *buf, uint16_t len)
 {
 	uint8_t param[50] = {0};
+	unsigned char msg[100];
     int8_t ret;
     ITEM item;
     stringToItem(&item, buf, len);
@@ -200,24 +201,14 @@ static void doAtdebugCmd(uint8_t *buf, uint16_t len)
 		mir3da_read_data(&x,&y,&z);
 		LogPrintf(DEBUG_ALL, "x:%d y:%d z:%d",x,y,z);
     }
-    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"TTS"))
+    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"BLE"))
     {
-    	if ((item.item_data[1][0] - '0' ) == 0)
-    	{
-    	    addCmdTTS(TTS_OUTWIFI);
-    	}
-    	if ((item.item_data[1][0] - '0' ) == 1)
-    	{
-    	    addCmdTTS(TTS_INWIFI);
-    	}
-    	if ((item.item_data[1][0] - '0' ) == 2)
-    	{
-    	    addCmdTTS(TTS_OUTBLE);
-    	}
-    	if ((item.item_data[1][0] - '0' ) == 3)
-    	{
-			addCmdTTS(TTS_INBLE);
-    	}
+		appPeripheralInit();
+    }
+    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"CHINA"))
+    {
+    	enc_unicode_to_utf8_one((unsigned long)item.item_data[1], msg, 1);
+		LogPrintf(DEBUG_ALL, "%x %x %x %x %x", item.item_data[1][0], msg[0],msg[1],msg[2],msg[3]);
     }
     else
     {

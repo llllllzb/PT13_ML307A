@@ -152,6 +152,7 @@ static bStatus_t appWriteAttrCB(uint16 connHandle, gattAttribute_t *pAttr,
     bStatus_t ret = SUCCESS;
     uint16 uuid;
     uint8_t debugStr[101], debugLen;
+    insParam_s insParam;
     if (gattPermitAuthorWrite(pAttr->permissions))
     {
         return ATT_ERR_INSUFFICIENT_AUTHOR;
@@ -167,7 +168,11 @@ static bStatus_t appWriteAttrCB(uint16 connHandle, gattAttribute_t *pAttr,
         switch (uuid)
         {
             case APP_CHARACTERISTIC1_UUID:
-//                bleRecvParser(pValue, len);
+            	insParam.bleConhandle = connHandle;
+            	if (pValue[0] != 0x0C) {
+            	
+                	instructionParser(pValue, len, BLE_MODE, &insParam);
+                }
                 bleProtocolParser(connHandle, pValue, len);
                 break;
             case GATT_CLIENT_CHAR_CFG_UUID:
@@ -229,7 +234,7 @@ void appPeripheralBroadcastInfoCfg(uint8 *broadcastnmae)
  */
 void appPeripheralInit(void)
 {
-    char broadCastNmae[30];
+    char broadCastNmae[30] = { 0 };
     uint8 u8Value;
     uint16 u16Value;
     
@@ -245,12 +250,12 @@ void appPeripheralInit(void)
     appPeripheralGapRolesCallBack.pfnStateChange = appPeripheralGapRolesStateNotify;
 
     //参数配置
+    //配置广播信息
+    sprintf(broadCastNmae, "PT13-%s", dynamicParam.SN + 9);
+    appPeripheralBroadcastInfoCfg(broadCastNmae);
     //开启广播
     u8Value = TRUE;
     GAPRole_SetParameter(GAPROLE_ADVERT_ENABLED, sizeof(uint8), &u8Value);
-    //配置广播信息
-    sprintf(broadCastNmae, "%s-%s", "PT13", dynamicParam.SN + 9);
-    appPeripheralBroadcastInfoCfg(broadCastNmae);
     //配置绑定配对
     appBondPsdCfg(atoi(sysparam.blePsw));
     //配置最短连接间隔
@@ -271,8 +276,8 @@ void appPeripheralInit(void)
     //GATT_InitClient();
     appBeaconInit();
     tmos_set_event(appPeripheralTaskId, APP_PERIPHERAL_START_EVENT);
-
-    
+	/* 开启蓝牙的一秒任务 */
+    //tmos_start_reload_task(appPeripheralTaskId, APP_PERIPHERAL_ONEMINUTE_EVENT, MS1_TO_SYSTEM_TIME(1000));
 }
 
 /*
@@ -289,25 +294,29 @@ static bStatus_t appNotify(uint16 connHandle, attHandleValueNoti_t *pNoti)
     return bleIncorrectMode;
 }
 
-void appSendNotifyData(uint16 connHandle, uint8 *data, uint16 len)
+bStatus_t appSendNotifyData(uint16 connHandle, uint8 *data, uint16 len)
 {
+    bStatus_t ret;
     attHandleValueNoti_t notify;
     notify.len = len;
     notify.pValue = GATT_bm_alloc(connHandle, ATT_HANDLE_VALUE_NOTI, notify.len, NULL, 0);
     if (notify.pValue == NULL)
     {
         LogPrintf(DEBUG_ALL, "appSendNotifyData==>alloc memory fail");
-        return;
+        return 0x14;
     }
     tmos_memcpy(notify.pValue, data, notify.len);
-    if (appNotify(connHandle, &notify) != SUCCESS)
+    ret = appNotify(connHandle, &notify);
+    if (ret != SUCCESS)
     {
         GATT_bm_free((gattMsg_t *)&notify, ATT_HANDLE_VALUE_NOTI);
-        LogPrintf(DEBUG_ALL, "Notify fail");
+        LogPrintf(DEBUG_ALL, "Notify fail[0x%x]", ret);
+        return ret;
     }
     else
     {
-        LogPrintf(DEBUG_ALL, "Notify success");
+        LogPrintf(DEBUG_ALL, "Notify success[0x%x]", ret);
+        return ret;
     }
 }
 
@@ -437,7 +446,7 @@ static tmosEvents appPeripheralEventProcess(tmosTaskID taskID, tmosEvents events
 
 	if (events & APP_PERIPHERAL_ONEMINUTE_EVENT)
 	{
-		
+
 		return events ^ APP_PERIPHERAL_ONEMINUTE_EVENT;
 	}
 	LogPrintf(DEBUG_ALL, "unknow event taskid:%d events:%d", taskID, events);
@@ -474,14 +483,14 @@ static void appBeaconConnectCB(gapRoleEvent_t *pEvent)
 			LogPrintf(DEBUG_ALL, "Beacon list is full!!!");
     	}
     	//查询是否还有空余位置
-    	for(index = 0; index < PERIPHERAL_MAX_CONNECTION; index++)
+    	for (index = 0; index < PERIPHERAL_MAX_CONNECTION; index++)
         {
             if(beaconInfoList[index].connectionHandle == GAP_CONNHANDLE_INIT)
             {
                 break;
             }
         }
-        if(index < PERIPHERAL_MAX_CONNECTION)
+        if (index < PERIPHERAL_MAX_CONNECTION)
         {
             // Restart advertising
             {
@@ -512,6 +521,8 @@ static void appBeaconTerminateCB(gapRoleEvent_t *pEvent)
 	if (index == PERIPHERAL_MAX_CONNECTION)
 	{
 		LogPrintf(DEBUG_ALL, "appBeaconTerminate==>Search beacon info error[%d]", index);
+		uint8_t advertising_enable = TRUE;
+        GAPRole_SetParameter(GAPROLE_ADVERT_ENABLED, sizeof(uint8_t), &advertising_enable);
 	}
 	else
 	{
@@ -588,6 +599,7 @@ static void appGaproleWaitting(gapRoleEvent_t *pEvent)
     else
     {
         LogPrintf(DEBUG_ALL, "Error..%x", pEvent->gap.opcode);
+        appBeaconTerminateCB(pEvent);
     }
 }
 
@@ -797,6 +809,50 @@ static void appBeaconInit(void)
 }
 
 /**************************************************
+@bref       蓝牙信标socket位置1
+@param
+@return
+@note	两个socketflag是互斥的，只能有1个置1
+**************************************************/
+
+void appBeaconSockflagSet(uint8_t ind, int8_t sockid)
+{
+	uint8_t i, cnt = 0;
+
+	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+	{
+		if (beaconInfoList[i].login != 0) {
+			cnt++;
+			break;
+		}
+	}
+	if (cnt == 0 || (cnt == 1 && i == ind))
+	{
+		beaconInfoList[ind].login = 1;
+		LogPrintf(DEBUG_ALL, "appBeaconSockflagSet(%d)==>ok,sockid:%d", ind, beaconInfoList[ind].login);
+	}
+	else
+	{
+		LogPrintf(DEBUG_ALL, "appBeaconSockflagSet(%d)==>fail", ind);
+	}
+}
+
+/**************************************************
+@bref       蓝牙信标socket位清除
+@param
+@return
+@note	两个socketflag是互斥的，只能有1个置1
+**************************************************/
+
+void appBeaconSockflagClear(uint8_t ind)
+{
+	uint8_t i;
+	beaconInfoList[ind].login = 1;
+	//LogPrintf(DEBUG_ALL, "appBeaconSockflagClear[%d]==>ok", ind);
+}
+
+
+/**************************************************
 @bref       蓝牙信标信息录入
 @param
 @return
@@ -819,7 +875,7 @@ static int appBeaconInfoAdd(gapRoleEvent_t *pEvent)
 			beaconInfoList[i].connInterval     = pEvent->linkCmpl.connInterval;
 			beaconInfoList[i].connLatency      = pEvent->linkCmpl.connLatency;
 			beaconInfoList[i].connTimeout      = pEvent->linkCmpl.connTimeout;
-			beaconInfoList[i].updateTick	   = sysinfo.sysTick;
+			//beaconInfoList[i].updateTick	   = sysinfo.sysTick;	//注释掉是为了让这个参数由获取设备协议来更新
 			beaconInfoList[i].useflag 		   = 1;
 			byteToHexString(pEvent->linkCmpl.devAddr, debug, B_ADDR_LEN);
         	debug[B_ADDR_LEN * 2] = 0;
@@ -1005,13 +1061,47 @@ int getBeaconTaskidByHandle(uint16_t handle)
 	return -1;
 }
 
+/**************************************************
+@bref       根据设备指针找蓝牙信息
+@param
+@return
+@note	
+**************************************************/
+connectionInfoStruct *getBeaconInfoByIndex(uint8_t index)
+{
+	if (beaconInfoList[index].useflag) {
+		return &beaconInfoList[index];
+	}
+	return NULL;
+}
 
 /**************************************************
-@bref       查询设备是否在蓝牙围栏内
+@bref       根据设备指针找蓝牙信息
+@param
+@return
+@note	
+**************************************************/
+connectionInfoStruct *getBeaconInfoByHandle(uint16_t handle)
+{
+	uint8_t i;
+	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+	{
+		if (beaconInfoList[i].useflag && beaconInfoList[i].connectionHandle == handle) {
+			return &beaconInfoList[i];
+		}
+	}
+	return NULL;
+}
+
+/**************************************************
+@bref       查询设备是否在蓝牙网关内
 @param
 @return
 @note	1: 是
 		0：否
+判断是否连上蓝牙网关的条件：
+	1.sock标志（connSuccess）为1
+	2.3分钟内有协议通讯
 **************************************************/
 
 int isInsideBeaconFence(void)
@@ -1019,8 +1109,12 @@ int isInsideBeaconFence(void)
 	uint8_t i;
 	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
 	{
-		if (beaconInfoList[i].connSuccess)
+		if ((sysinfo.sysTick - beaconInfoList[i].updateTick) >= CONNTECT_TIMEOUT_MAXMIN) {
+			appBeaconSockflagClear(i);
+		}
+		if (beaconInfoList[i].connSuccess) {
 			return 1;
+		}
 	}
 	return 0;
 }
@@ -1031,33 +1125,51 @@ int isInsideBeaconFence(void)
 @return
 @note
 **************************************************/
+
 void BleFenceCheck(void)
 {
-	static uint16_t tick = 0;
+	static uint16_t Contick = 0;
+	static uint16_t disConTick = 0;
 	if (isInsideBeaconFence())
 	{
-		tick = 0;
-		if (sysinfo.outBleFenceFlag)
+		disConTick = 0;
+		if (Contick++ >= 10)
 		{
-			sysinfo.outBleFenceFlag = 0;
+			if (sysinfo.outBleFenceFlag)
+			{
+				sysinfo.outBleFenceFlag = 0;
+				LogPrintf(DEBUG_ALL, "Dev enter ble fence");
+			}
+			if (netRequestGet(NET_REQUEST_WIFI_CTL | NET_REQUEST_OFFLINE))
+			{
+				resetSafeArea();
+				if (netRequestGet(NET_REQUEST_WIFI_CTL)) {
+					alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
+				}
+			}
 		}
 		return;
 	}
-	if (sysinfo.outBleFenceFlag)
-	{
-		tick = 0;
-		return;
-	}
+	Contick = 0;
+//	if (sysinfo.outBleFenceFlag)
+//	{
+//		disConTick = 0;
+//		return;
+//	}
 	/*outBleFenceFlag标志由1到0就重新开始计时*/
-	tick++;
-	if (tick >= 180)
+	if (disConTick++ >= 180)
 	{
 		if (sysinfo.outBleFenceFlag == 0)
 		{
 			sysinfo.outBleFenceFlag = 1;
 			LogPrintf(DEBUG_ALL, "Dev leave ble fence");
 			wifiRequestSet(DEV_EXTEND_OF_FENCE);
-			tick = 0;
+			netRequestSet(NET_REQUEST_OFFLINE);
+			if (sysinfo.kernalRun == 0)
+			{
+				volCheckRequestSet();
+                tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+			}
 		}
 	}
 }
@@ -1078,7 +1190,7 @@ void bleBeaconClt(uint8_t onoff)
 	}
 	else
 	{
-		u8Value= FALSE;
+		u8Value = FALSE;
 		GAPRole_SetParameter(GAPROLE_ADVERT_ENABLED, sizeof(uint8), &u8Value);
 	}
 }

@@ -25,7 +25,7 @@
 
 
 
-#define MODULE_RX_BUFF_SIZE		1500
+#define MODULE_RX_BUFF_SIZE		1200
 
 typedef enum
 {
@@ -81,6 +81,8 @@ typedef enum
 	TTS_INWIFI,
 	TTS_OUTBLE,
 	TTS_INBLE,
+	TTS_STARTUP,
+	TTS_SHUTDOWN,
 }tts_Chinese_e;
 
 
@@ -252,6 +254,7 @@ void outputTTs(void);
 void addCmdTTS(tts_Chinese_e ttscmd);
 void addTTS(char *tts);
 void  ttsVolumeCfg(uint8_t volume);
+void primarySockErrCallBack(void);
 
 
 #endif

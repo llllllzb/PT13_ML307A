@@ -44,6 +44,18 @@
 #define CMD_SET_SHIEL_ALARM_HOLD_PARAM		0x16  //设置屏蔽电压保持参数
 #define CMD_GET_SHIEL_ALARM_HOLD_PARAM		0x17  //读取屏蔽电压保持参数
 
+/**
+ * 设备连上后，主机会询问从机的SN号
+ * 从机成功发送SN号到主机之后，标记sockflag（互斥）
+ * sockflag只有在持续3分钟无协议通讯才会被清除
+ * sockflag信息每次会跟随心跳发送给主机
+ * 主机端检测到sockflag开启
+ * 
+ */
+#define CMD_DEV_LOGIN_INFO                  0x30  //蓝牙上报信息
+#define CMD_DEV_HEARTBEAT					0x31
+#define CMD_DEV_MASTER_INFO					0x32  //主机状态
+
 
 #define CMD_SET_BROADCAST_NAME          	0xA0//修改广播名称
 #define CMD_SET_MODIFY_ADVINTER         	0xA1//修改广播间隔
@@ -64,10 +76,14 @@
 #define CMD_DECVICE_CMD_RESPON				0x81//指令回复
 
 
+
 uint8_t appPackProtocol(uint8_t *dest,uint8_t cmd,uint8_t *data,uint8_t len);
 void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len);
 
 void bleGeneratePsdProtocol(uint8_t *psd);
+void bleSendHbtInfo(uint16_t connhandle);
+void bleSendLoginInfo(uint16_t connhandle);
+
 
 
 #endif

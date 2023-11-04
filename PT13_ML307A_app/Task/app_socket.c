@@ -7,7 +7,7 @@
 #include "app_sys.h"
 #include "app_net.h"
 #include "app_socket.h"
-#define SOCKET_LIST_MAX_SIZE    5
+#define SOCKET_LIST_MAX_SIZE    6
 
 SocketInfo_s socketList[SOCKET_LIST_MAX_SIZE];
 SocketScheduleInfo_s sockSchInfo;
@@ -248,9 +248,13 @@ void socketSchedule(void)
                 socketSchChange(SOCKET_SCHEDULE_END);
 
             }
-            else if (sockSchInfo.runTick > 90)
+            else if (sockSchInfo.runTick > 60)
             {
                 LogPrintf(DEBUG_ALL, "Socket[%d] connect timeout", sockSchInfo.ind);
+				if (socketList[sockSchInfo.ind].socketId == NORMAL_LINK || socketList[sockSchInfo.ind].socketId == JT808_LINK)
+				{
+					primarySockErrCallBack();
+				}
                 socketSchChange(SOCKET_SCHEDULE_END);
             }
             else

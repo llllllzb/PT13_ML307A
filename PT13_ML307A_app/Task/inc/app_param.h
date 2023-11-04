@@ -22,7 +22,7 @@
 #define BOOT_PARAM_FLAG         0xB0
 #define OTA_PARAM_FLAG          0x1A
 
-#define EEPROM_VERSION									"PT13_ML307A_V2.0.1"
+#define EEPROM_VERSION									"PT13_ML307A_V2.0.2"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -113,6 +113,7 @@ typedef struct
 	
 	uint8_t wifiList[5][6];	
 	uint8_t blePsw[7];
+
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/

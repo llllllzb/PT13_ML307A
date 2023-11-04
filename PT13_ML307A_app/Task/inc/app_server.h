@@ -67,6 +67,7 @@ typedef struct
 	uint8_t waitTick;
 }agps_connect_s;
 
+extern int8_t timeOutId;
 
 void moduleRspSuccess(void);
 void hbtRspSuccess(void);
@@ -90,7 +91,7 @@ void bleSerLoginReady(void);
 void agpsRequestSet(void);
 void agpsRequestClear(void);
 void agpsServerChangeFsm(agps_connfsm_e fsm);
-
+void moduleRspTimeout(void);
 
 uint8_t primaryServerIsReady(void);
 uint8_t hiddenServerIsReady(void);

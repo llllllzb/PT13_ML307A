@@ -867,16 +867,34 @@ static void jt808SendPosition(uint8_t *sn, gpsinfo_s *gpsinfo)
 
     len = jt808TerminalPosition(dest, sn, &jt808_position, 1);
 
-    if (primaryServerIsReady() && getTcpNack() == 0)
+    if (sysinfo.flag123)
+	{
+		ret = jt808TcpSend(dest, len);
+		sysinfo.flag123 = 0;
+		if (ret == 0 && gpsinfo->fixstatus && gpsinfo->hadupload == 0)
+	    {
+	        gpsRestoreSave(&jt808_gpsres);
+	    }
+	}
+	else if (sysinfo.mode123Min != 0 && sysinfo.flag123 == 0)
+	{
+		gpsRestoreSave(&jt808_gpsres);
+		LogMessage(DEBUG_ALL, "save gps");
+	}
+    else if (primaryServerIsReady() && getTcpNack() == 0)
     {
         ret = jt808TcpSend(dest, len);
+        if (ret == 0 && gpsinfo->fixstatus && gpsinfo->hadupload == 0)
+	    {
+	        gpsRestoreSave(&jt808_gpsres);
+	    }
     }
-
-    if (ret == 0 && gpsinfo->fixstatus && gpsinfo->hadupload == 0)
+    else
     {
         gpsRestoreSave(&jt808_gpsres);
+        LogMessage(DEBUG_ALL, "save gps");
     }
-    gpsinfo->hadupload = 1;
+    gpsinfo->hadupload = 1;
 }
 
 /**************************************************

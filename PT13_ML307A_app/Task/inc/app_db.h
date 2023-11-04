@@ -27,7 +27,7 @@
 #define WIFI_ADDRESS		0X7400
 
 #define DB_FLAG				0xAB
-#define GPS_DB_SIZE			500
+#define GPS_DB_SIZE			600
 
 #define BLOCK_SIZE		256
 
@@ -56,5 +56,6 @@ uint8_t dbUpload(void);
 
 uint16 dbCircularWrite(uint8 *data, uint16 len);
 uint16 dbCircularRead(uint8 *data, uint16 len);
+uint8_t dbIsNull(void);
 
 #endif /* TASK_INC_APP_DB_H_ */

@@ -556,6 +556,18 @@ void portLedCfg(void)
     GPIOB_ModeCfg(LED1_PIN, GPIO_ModeOut_PP_5mA);
     LED1_OFF;
 }
+
+/**
+ * @brief   系统电源 GPIO初始化
+ * @param
+ * @return
+ */
+void portSyspwkGpioCfg(void)
+{
+    GPIOB_ModeCfg(SYS_POWER_PIN, GPIO_ModeOut_PP_5mA);
+    SYS_POWER_ON;
+}
+
 /**
  * @brief   系统复位
  * @param

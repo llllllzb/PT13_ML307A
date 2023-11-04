@@ -88,7 +88,11 @@ static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *pa
             }
             break;
         case BLE_MODE:
-            //appSendNotifyData(buf, len);
+        	if (param != NULL)
+        	{
+	        	insparam = (insParam_s *)param;
+	            appSendNotifyData(insparam->bleConhandle, buf, len);
+            }
             break;
         case JT808_MODE:
 			jt808MessageSend(buf, len);
@@ -203,7 +207,7 @@ static void doStatusInstruction(ITEM *item, char *message)
     sprintf(message + strlen(message), "BATTERY=%s;", getTerminalChargeState() > 0 ? "Charging" : "Uncharged");
     sprintf(message + strlen(message), "LOGIN=%s;", primaryServerIsReady() > 0 ? "Yes" : "No");
     sprintf(message + strlen(message), "Gsensor=%s;", read_gsensor_id() == 0x13 ? "OK" : "ERR");
-    sprintf(message + strlen(message), "RUNNINGTIME=%d;", dynamicParam.runningtime);
+    sprintf(message + strlen(message), "RUNNINGTIME=%dmin;", dynamicParam.runningtime / 60);
     sprintf(message + strlen(message), "STEP=%d;", dynamicParam.step);
     sprintf(message + strlen(message), "SAFEAREA=%s", netRequestGet(NET_REQUEST_WIFI_CTL) ? "OUT" : "IN");
 }
@@ -433,7 +437,7 @@ static void doModeInstruction(ITEM *item, char *message)
                 {
                     sysparam.gapMinutes = 5;
                 }
-				if(sysparam.gapMinutes >= 10080 )
+				if (sysparam.gapMinutes >= 10080 )
 				{
 					sysparam.gapMinutes = 10080;
 				}
@@ -462,7 +466,16 @@ static void doModeInstruction(ITEM *item, char *message)
 				portGsensorCtl(1);
 				if (item->item_data[2][0] != 0)
 				{
-					sysparam.mode4GapMin = (uint16_t)atoi(item->item_data[2]);
+					sysparam.wifiCheckGapMin_in  = (uint16_t)atoi(item->item_data[2]);
+					sysparam.wifiCheckGapMin_out = (uint16_t)atoi(item->item_data[2]);
+				}
+				if (item->item_data[3][0] != 0)
+				{
+					sysparam.wifiCheckGapStep_in = (uint16_t)atoi(item->item_data[3]);
+				}
+				if (item->item_data[4][0] != 0)
+				{
+					sysparam.wifiCheckGapStep_out = (uint16_t)atoi(item->item_data[4]);
 				}
 				if (sysinfo.outBleFenceFlag == 0)
 				{
@@ -477,7 +490,8 @@ static void doModeInstruction(ITEM *item, char *message)
 	                agpsRequestClear();
 	                startTimer(50, changeMode4Callback, 0);
 	           	}
-				sprintf(message, "Change to mode %d, upload every %d min", workmode, sysparam.mode4GapMin);
+				sprintf(message, "Change to mode %d, and wificheck every %dmin, %dstep, %dstep", workmode, sysparam.wifiCheckGapMin_in, 
+					sysparam.wifiCheckGapStep_in, sysparam.wifiCheckGapStep_out);
             	break;
             default:
                 strcpy(message, "Unsupport mode");
@@ -503,7 +517,6 @@ void dorequestSend123(void)
     gpsinfo_s *gpsinfo;
 
     portGetRtcDateTime(&year, &month, &date, &hour, &minute, &second);
-    sysinfo.flag123 = 0;
     gpsinfo = getCurrentGPSInfo();
     sprintf(message, "(%s)<Local Time:%.2d/%.2d/%.2d %.2d:%.2d:%.2d>http://maps.google.com/maps?q=%s%f,%s%f", dynamicParam.SN, \
             year, month, date, hour, minute, second, \
@@ -526,36 +539,42 @@ void do123Instruction(ITEM *item, insMode_e mode, void *param)
     if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?' || atoi(item->item_data[1]) < 3)
     {
 
-	    if (sysparam.poitype == 0)
-	    {
-	        lbsRequestSet(DEV_EXTEND_OF_MY);
-	        LogMessage(DEBUG_ALL, "Only LBS reporting");
-	    }
-	    else if (sysparam.poitype == 1)
-	    {
-	        lbsRequestSet(DEV_EXTEND_OF_MY);
-	        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-	        LogMessage(DEBUG_ALL, "LBS and GPS reporting");
-	    }
-	    else
-	    {
-	        lbsRequestSet(DEV_EXTEND_OF_MY);
-	        wifiRequestSet(DEV_EXTEND_OF_MY);
-	        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-	        LogMessage(DEBUG_ALL, "LBS ,WIFI and GPS reporting");
-	    }
+//	    if (sysparam.poitype == 0)
+//	    {
+//	        lbsRequestSet(DEV_EXTEND_OF_MY);
+//	        LogMessage(DEBUG_ALL, "Only LBS reporting");
+//	    }
+//	    else if (sysparam.poitype == 1)
+//	    {
+//	        lbsRequestSet(DEV_EXTEND_OF_MY);
+//	        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
+//	        LogMessage(DEBUG_ALL, "LBS and GPS reporting");
+//	    }
+//	    else
+//	    {
+//	        lbsRequestSet(DEV_EXTEND_OF_MY);
+//	        wifiRequestSet(DEV_EXTEND_OF_MY);
+        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
+        LogMessage(DEBUG_ALL, "LBS ,WIFI and GPS reporting");
+//	    }
 	    netRequestSet(NET_REQUEST_CONNECT_ONE);
 	    sysinfo.flag123 = 1;
 	    save123InstructionId();
-	    sysinfo.mode123Min = 0;
+	    
     }
     else
     {
+    	sysinfo.mode123RunTick = 0;
     	sysinfo.mode123Min = atoi(item->item_data[1]);
+    	sysinfo.mode123GpsFre = atoi(item->item_data[2]);
+    	if (sysinfo.mode123GpsFre == 0)
+    	{
+			sysinfo.mode123GpsFre = 10;
+    	}
 		lbsRequestSet(DEV_EXTEND_OF_MY);
 		gpsRequestSet(GPS_REQUEST_123_CTL | GPS_REQUEST_UPLOAD_ONE);
 		netRequestSet(NET_REQUEST_KEEPNET_CTL);
-		sprintf(message, "GPS forced work %d min, and reporting every 10 seconds", sysinfo.mode123Min);
+		sprintf(message, "Device work %d min, and acquisition positon every %d seconds", sysinfo.mode123Min, sysinfo.mode123GpsFre);
 		LogMessageWL(DEBUG_ALL, message, strlen(message));
 		sendMsgWithMode((uint8_t *)message, strlen(message), mode123, &param123);
     }
@@ -616,7 +635,7 @@ void doUPSInstruction(ITEM *item, char *message)
     strcpy(bootparam.apnpassword, sysparam.apnpassword);
     strcpy(bootparam.codeVersion, EEPROM_VERSION);
     bootParamSaveAll();
-    startTimer(30, modulePowerOff, 0);
+    startTimer(30, modeTryToStop, 0);
     startTimer(80, portSysReset, 0);
 }
 
@@ -744,8 +763,10 @@ void doDebugInstrucion(ITEM *item, char *message)
             sysinfo.gpsUpdatetick / 3600, sysinfo.gpsUpdatetick % 3600 / 60, sysinfo.gpsUpdatetick % 60);
     sprintf(message + strlen(message), "hideLogin:%s;", hiddenServerIsReady() ? "Yes" : "No");
     sprintf(message + strlen(message), "netrequest:%02x;", sysinfo.netRequest);
-	sprintf(message + strlen(message), "wifirequest:%02x;", sysinfo.wifiRequest);
-	sprintf(message + strlen(message), "SYS_GetLastResetSta:%02x", SYS_GetLastResetSta());
+	sprintf(message + strlen(message), "wifirequest:%02x;", sysinfo.wifiExtendEvt);
+	sprintf(message + strlen(message), "alarmRequest:%02x;", sysinfo.alarmRequest);
+	sprintf(message + strlen(message), "outBleFence:%d;", sysinfo.outBleFenceFlag);
+	sprintf(message + strlen(message), "SYS_GetLastResetSta:%02x;", SYS_GetLastResetSta());
     paramSaveAll();
     dynamicParamSaveAll();
 }
@@ -1449,13 +1470,7 @@ static void doWithWifiParamInstruction(ITEM *item, char *message)
 
 static void doRsWifiFenceInstruction(ITEM *item, char *message)
 {
-	lbsRequestClear();
-	netRequestClear(NET_REQUEST_KEEPNET_CTL | NET_REQUEST_WIFI_CTL);
-	wifiRequestClear(DEV_EXTEND_OF_FENCE);
-	gpsRequestClear(NET_REQUEST_ALL);
-	sysinfo.mode123Min = 0;
-	sysinfo.flag123 = 0;
-	sysinfo.outBleFenceFlag = 0;
+	resetSafeArea();
 	strcpy(message, "Succeeded in entering the security zone");
 }
 

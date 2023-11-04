@@ -70,6 +70,7 @@ typedef struct
     char *data;
     uint16_t len;
     uint8_t link;
+    uint8_t bleConhandle;
 } insParam_s;
 
 void instructionParser(uint8_t *str, uint16_t len, insMode_e mode, void *param);

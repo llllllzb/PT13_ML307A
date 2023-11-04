@@ -95,7 +95,8 @@ void reCover123InstructionId(void);
 void getInsid(void);
 void setInsId(void);
 
-void gpsRestoreUpload(void);
+uint8_t gpsRestoreUpload(void);
+
 
 
 void protocolSnRegister(char *sn);

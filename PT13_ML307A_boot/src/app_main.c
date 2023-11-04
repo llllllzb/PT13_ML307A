@@ -52,6 +52,7 @@ void main(void)
 {
     SetSysClock(CLK_SOURCE_PLL_60MHz);
     portGpioSetDefCfg();
+    portSyspwkGpioCfg();
     portUartCfg(APPUSART2, 1, 115200, NULL);
     paramInit();
     if (sysparam.updateStatus == 0)

@@ -15,6 +15,10 @@
 #define APPUSART2_BUFF_SIZE 128
 #define APPUSART3_BUFF_SIZE 10
 
+//系统供电脚
+#define SYS_POWER_PIN               GPIO_Pin_15     //PB15
+#define SYS_POWER_ON                GPIOB_SetBits(SYS_POWER_PIN)
+#define SYS_POWER_OFF               GPIOB_ResetBits(SYS_POWER_PIN)
 
 //4G模组涉及IO
 #define POWER_SUPPLY_PIN			GPIO_Pin_13		//PA13
@@ -71,7 +75,7 @@ void portUartSend(UART_RXTX_CTL *uartctl, uint8_t *buf, uint16_t len);
 void pollUartData(void);
 
 void portTimerCfg(void);
-
+void portSyspwkGpioCfg(void);
 void portGpioSetDefCfg(void);
 void portModuleGpioCfg(void);
 void portLedCfg(void);

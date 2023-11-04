@@ -101,7 +101,7 @@ void paramDefaultInit(uint8_t level)
     sysparam.debug = 0;
     sysparam.agpsen = 1;
     dynamicParam.debug = 0;
-    sysparam.mode4GapMin = 60;
+    sysparam.mode4GapMin = 0;
     sysparam.wifiCheckGapStep_in = 500;
     sysparam.wifiCheckGapStep_out = 1000;
     sysparam.wifiCheckGapMin_in = 30;

@@ -979,7 +979,7 @@ void gpsRestoreSave(gpsRestore_s *gpsres)
 @note
 **************************************************/
 
-void gpsRestoreUpload(void)
+uint8_t gpsRestoreUpload(void)
 {
     uint16 readlen, destlen, datalen;
     uint8 readBuff[400], gpscount, i;
@@ -987,7 +987,9 @@ void gpsRestoreUpload(void)
     gpsRestore_s *gpsinfo;
     readlen = dbCircularRead(readBuff, 400);
     if (readlen == 0)
-        return;
+    {
+        return 0;
+    }
     LogPrintf(DEBUG_ALL, "dbread:%d", readlen);
     gpscount = readlen / sizeof(gpsRestore_s);
     LogPrintf(DEBUG_ALL, "count:%d", gpscount);
@@ -1013,6 +1015,14 @@ void gpsRestoreUpload(void)
     else
     {
         socketSendData(NORMAL_LINK, (uint8_t *)dest, destlen);
+    }
+    if (dbIsNull())
+    {
+		return 0;
+    }
+    else
+    {
+		return 1;
     }
 }
 
@@ -1131,7 +1141,17 @@ void protocolSend(uint8_t link, PROTOCOLTYPE protocol, void *param)
         case PROTOCOL_12:
             if (link == NORMAL_LINK)
             {
-                if (primaryServerIsReady() && getTcpNack() == 0)
+            	if (sysinfo.flag123)
+            	{
+					socketSendData(link, (uint8_t *)debugP, txlen);
+					sysinfo.flag123 = 0;
+            	}
+            	else if (sysinfo.mode123Min != 0 && sysinfo.flag123 == 0)
+            	{
+					gpsRestoreSave(&gpsres);
+					LogMessage(DEBUG_ALL, "save gps");
+            	}
+                else if (primaryServerIsReady() && getTcpNack() == 0)
                 {
                     socketSendData(link, (uint8_t *)debugP, txlen);
                 }
@@ -1143,8 +1163,21 @@ void protocolSend(uint8_t link, PROTOCOLTYPE protocol, void *param)
             }
             else
             {
-                socketSendData(link, (uint8_t *)debugP, txlen);
-            }
+            	if (sysinfo.flag123)
+            	{
+					socketSendData(link, (uint8_t *)debugP, txlen);
+					sysinfo.flag123 = 0;
+            	}
+            	else if (sysinfo.mode123Min != 0 && sysinfo.flag123 == 0)
+            	{
+					gpsRestoreSave(&gpsres);
+					LogMessage(DEBUG_ALL, "save gps");
+            	}
+            	else 
+            	{
+                	socketSendData(link, (uint8_t *)debugP, txlen);
+                }
+           	}
             break;
         default:
             socketSendData(link, (uint8_t *)debugP, txlen);

@@ -82,6 +82,8 @@ const tts_Chinese_s ttsTable[] =
 	{TTS_INWIFI, "E8AEBEE5A487E5B7B2E8BF9BE585A5E783ADE782B9E59BB4E6A08F"},
 	{TTS_OUTBLE, "E8AEBEE5A487E5B7B2E7A6BBE5BC80E8939DE78999E59BB4E6A08F"},
 	{TTS_INBLE, "E8AEBEE5A487E5B7B2E8BF9BE585A5E8939DE78999E59BB4E6A08F"},
+	{TTS_STARTUP, "E8AEBEE5A487E5BC80E69CBA"},//设备开机
+	{TTS_SHUTDOWN, "E8AEBEE5A487E585B3E997AD"},//设备关闭
 };
 
 /**************************************************
@@ -218,6 +220,10 @@ void outputNode(void)
 
         //数据发送
         portUartSend(&usart0_ctl, (uint8_t *)currentnode->data, currentnode->datalen);
+        if (timeOutId == -1 && moduleState.cmd != MWIFISCANSTART_CMD)
+        {
+            timeOutId = startTimer(120, moduleRspTimeout, 0);
+        }
         if (currentnode->data[0] != 0X78 && currentnode->data[0] != 0x79 && currentnode->data[0] != 0x7E)
         {
             LogMessageWL(DEBUG_ALL, currentnode->data, currentnode->datalen);
@@ -228,9 +234,10 @@ void outputNode(void)
         		currentnode->currentcmd == MWIFISCANSTART_CMD)
         {
             lockFlag = 1;
-            if (currentnode->currentcmd == MIPCLOSE_CMD)
+            /* 发完CMGS指令如果立即发短信内容可能会卡住，尤其是刚唤醒的时候 */
+            if (currentnode->currentcmd == CMGS_CMD)
             {
-                tickRange = 10;
+                tickRange = 25;
             }
             else if (currentnode->currentcmd == MWIFISCANSTART_CMD)
             {
@@ -343,14 +350,18 @@ static void modulePressPowerKey(void)
 @param
 @return
 @note
+不加延时可能会复位
 **************************************************/
 
 void modulePowerOn(void)
 {
+	portModuleGpioCfg(1);
+	DelayMs(1);
     LogMessage(DEBUG_ALL, "modulePowerOn");
     moduleInit();
     sysinfo.moduleRstFlag = 1;
     portUartCfg(APPUSART0, 1, 57600, moduleRecvParser);
+    DelayMs(1);
     POWER_ON;
     PWRKEY_HIGH;
     RSTKEY_HIGH;
@@ -372,6 +383,7 @@ static void modulePowerOffRelease(void)
 	LogMessage(DEBUG_ALL, "modulePowerOff Done");
 	moduleInit();
 	PWRKEY_HIGH;
+	portModuleGpioCfg(0);
 }	
 
 
@@ -396,7 +408,7 @@ static void modulePowerOffProcess(void)
 void modulePowerOff(void)
 {
     LogMessage(DEBUG_ALL, "modulePowerOff");
-    
+    portModuleGpioCfg(1);
     portUartCfg(APPUSART0, 0, 57600, NULL);
     POWER_OFF;
     RSTKEY_HIGH;
@@ -405,6 +417,7 @@ void modulePowerOff(void)
     moduleInit();
     sysinfo.moduleRstFlag = 1;
     socketDelAll();
+    portModuleGpioCfg(0);
 }
 
 /**************************************************
@@ -782,14 +795,15 @@ void netConnectTask(void)
         case CONFIG_STATUS:
 //        	sendModuleCmd(CPMS_CMD, "\"ME\",\"ME\",\"ME\"");	/*修改短信存储位置*/
 //        	sendModuleCmd(CNMI_CMD, "2,2");						/*第二个参数表示缓存在ME中, 不立即上报*/
-//        	sendModuleCmd(CMGF_CMD, "1");						/*TEXT模式*/
+//        	sendModuleCmd(CMGF_CMD, "1");					/*TEXT模式*/
+			sendModuleCmd(CEREG_CMD, "0");
 			sendModuleCmd(CGSN_CMD, "1");
 			sendModuleCmd(CIMI_CMD, NULL);
 			sendModuleCmd(MCCID_CMD, NULL);
 			sendModuleCmd(MCFG_CMD, "ri,1");
 			ttsVolumeCfg(15);
 			queryBatVoltage();
-            if (sysparam.MODE == MODE4 && sysinfo.netRequest == 0)
+            if (sysparam.MODE == MODE4 && sysinfo.netRequest == NET_REQUEST_OFFLINE)//如果仅仅只有offline那就跳到offline状态
             {
 				moduleSleepCtl(1);
 				changeProcess(OFFLINE_STATUS);
@@ -833,7 +847,7 @@ void netConnectTask(void)
             queryRecvBuffer();
             break;
         case OFFLINE_STATUS:
-			if (sysparam.MODE != MODE4 || sysinfo.netRequest != 0)
+			if (sysparam.MODE != MODE4 || (sysinfo.netRequest != 0 && sysinfo.netRequest != NET_REQUEST_OFFLINE))
 			{
 				gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
 				changeProcess(QIACT_STATUS);
@@ -1280,6 +1294,9 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
     rebuf = buf;
     relen = len;
     index = my_getstrindex((char *)rebuf, "+MWIFISCANINFO:", relen);
+    if (index < 0)
+    	return;
+    sysinfo.wifiscanCnt = 0;
     wifiList.apcount = 0;
     while (index >= 0)
     {
@@ -1296,6 +1313,7 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 				if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_FENCE)
 				{
 					wifiRequestSet(DEV_EXTEND_OF_FENCE);	
+					wifiRspSuccess();
 				}
 			}
         	break;
@@ -1357,6 +1375,7 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
             }
         }
         sysinfo.wifiExtendEvt = 0;
+        wifiRspSuccess();
     }
 
 }
@@ -1791,6 +1810,16 @@ static void mccidParser(uint8_t *buf, uint16_t len)
 
 }
 
+void primarySockErrCallBack(void)
+{
+	moduleCtrl.qiopenCount++;
+	if (moduleCtrl.qiopenCount >= 4)
+	{
+		moduleReset();
+		moduleCtrl.qiopenCount = 0;
+	}
+}
+
 /**************************************************
 @bref		MIPOPEN	指令解析
 @param
@@ -1830,14 +1859,9 @@ void mipopenParser(uint8_t *buf, uint16_t len)
 		else
 		{
 			socketSetConnState(link, SOCKET_CONN_ERR);
-			if (link == NORMAL_LINK)
+			if (link == NORMAL_LINK || link == JT808_LINK)
 			{
-				moduleCtrl.qiopenCount++;
-				if (moduleCtrl.qiopenCount >= 4)
-				{
-					moduleReset();
-					moduleCtrl.qiopenCount = 0;
-				}
+				primarySockErrCallBack();
 			}
 			 
 		}
@@ -1856,8 +1880,9 @@ uint8_t isAgpsDataRecvComplete(void)
 @param
 @return
 @note
-+MIPURC: "rtcp",0,2
++MIPURC: "rtcp",0,10,10
 +MIPURC: "disconn",0,1
++MIPURC: "rtcp",4,1360,1360
 
 
 OK
@@ -1866,27 +1891,38 @@ OK
 uint8_t mipurcParser(uint8_t *buf, uint16_t len)
 {
     int index;
-    char restore[513];
+    char restore[513]={ 0 };
     uint8_t *rebuf, type, link, numb, ret = 0;
     int16_t relen;
     uint16_t readLen, unreadLen, debugLen;
     ITEM item;
+    
     rebuf = buf;
     relen = len;
-
+    tmos_memset(&item, 0, sizeof(ITEM));
     index = my_getstrindex(rebuf, "+MIPURC:", relen);
     if (index < 0)
     	return 0;
     while (index >= 0)
     {
-    	index += 10;
-		rebuf += index;
-		relen -= index;
+		rebuf += index + 10;
+		relen -= index + 10;
+		//有时候会仅返回+MIPURC: "rtcp",0,1且后面没有'\r'
         if (my_strpach(rebuf, "rtcp"))
         {
 			rebuf += 6;
 			relen -= 6;
 			index = getCharIndex(rebuf, relen, '\r');
+			if (index < 0 || index > 26)
+			{
+				LogPrintf(DEBUG_ALL, "中移模组出错：%d", index);
+				index = getCharIndex(rebuf, relen, '\n');
+				if (index < 0 || index > 26)
+				{
+					LogPrintf(DEBUG_ALL, "中移模组又出错：%d，疑似找不到换行符", index);
+					index = 26;
+				}
+			}
 			tmos_memcpy(restore, rebuf, index);
 			restore[index] = 0;
 			stringToItem(&item, restore, index);
@@ -2454,7 +2490,7 @@ void sendMessage(uint8_t *buf, uint16_t len, char *telnum)
 {
     char param[60];
     sprintf(param, "\"%s\"", telnum);
-    sendModuleCmd(CMGF_CMD, "1");
+    sendModuleCmd(AT_CMD, NULL);
     sendModuleCmd(CMGS_CMD, param);
     LogPrintf(DEBUG_ALL, "len:%d", len);
     buf[len] = 0x1A;

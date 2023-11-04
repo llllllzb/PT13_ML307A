@@ -21,7 +21,7 @@ static netConnectInfo_s privateServConn, bleServConn, hiddenServConn;
 static jt808_Connect_s jt808ServConn;
 static agps_connect_s agpsServConn;
 static bleInfo_s *bleHead = NULL;
-static int8_t timeOutId = -1;
+int8_t timeOutId = -1;
 static int8_t hbtTimeOutId = -1;
 
 /**************************************************
@@ -63,9 +63,12 @@ void hbtRspSuccess(void)
 @note
 **************************************************/
 
-static void moduleRspTimeout(void)
+void moduleRspTimeout(void)
 {
     timeOutId = -1;
+    /* 如果已经关机了就不要复位了 */
+    if (isModulePowerOff())
+    	return;
     moduleReset();
 }
 
@@ -225,9 +228,10 @@ static void privateServerSocketRecv(char *data, uint16_t len)
 void privateServerConnTask(void)
 {
     static uint16_t unLoginTick = 0;
-
+	static uint8 uploadflag = 0;
     if (isModuleRunNormal() == 0)
     {
+    	uploadflag = 0;
         ledStatusUpdate(SYSTEM_LED_NETOK, 0);
         if (socketGetUsedFlag(NORMAL_LINK) == 1)
         {
@@ -245,6 +249,7 @@ void privateServerConnTask(void)
     }
     if (socketGetConnStatus(NORMAL_LINK) != SOCKET_CONN_SUCCESS)
     {
+    	uploadflag = 0;
         ledStatusUpdate(SYSTEM_LED_NETOK, 0);
         privateServerChangeFsm(SERV_LOGIN);
         if (unLoginTick++ >= 900)
@@ -295,10 +300,10 @@ void privateServerConnTask(void)
             if (privateServConn.heartbeattick % sysparam.heartbeatgap == 0)
             {
                 privateServConn.heartbeattick = 0;
-                if (timeOutId == -1)
-                {
-                    timeOutId = startTimer(120, moduleRspTimeout, 0);
-                }
+//                if (timeOutId == -1)
+//                {
+//                    timeOutId = startTimer(120, moduleRspTimeout, 0);
+//                }
                 if (hbtTimeOutId == -1)
                 {
                     hbtTimeOutId = startTimer(1800, hbtRspTimeOut, 0);
@@ -310,23 +315,49 @@ void privateServerConnTask(void)
                 {
 					netRequestClear(NET_REQUEST_CONNECT_ONE);
                 }
+                uploadflag = 1;
+                sysinfo.hbtFlag = 1;
             }
             privateServConn.heartbeattick++;
             if (getTcpNack())
             {
                 querySendData(NORMAL_LINK);
             }
-            if (privateServConn.heartbeattick % 2 == 0)
+
+            if (sysinfo.mode123GpsFre == 0)
             {
-                //传完ram再传文件系统
-                if (getTcpNack() == 0)
-                {
-                    if (dbUpload() == 0)
-                    {
-                        gpsRestoreUpload();
-                    }
-                }
+            	if (privateServConn.heartbeattick % 2 == 0)
+	            {
+	                //传完ram再传文件系统
+	                if (getTcpNack() == 0)
+	                {
+	                    if (dbUpload() == 0)
+	                    {
+	                        gpsRestoreUpload();
+	                    }
+	                }
+	            }
             }
+            else 
+            {
+				if (uploadflag)
+				{
+					if (privateServConn.heartbeattick % 2 == 0)
+					{
+						LogMessage(DEBUG_ALL, "111");
+						if (dbUpload() == 0)
+	                    {
+	                    	LogMessage(DEBUG_ALL, "222");
+	                        if (gpsRestoreUpload() == 0)
+	                        {
+								uploadflag = 0;
+								LogPrintf(DEBUG_ALL, "打包上传完成");
+	                        }
+	                    }
+	                }
+				}
+            }
+           
             break;
         default:
             privateServConn.fsmstate = SERV_LOGIN;
@@ -494,10 +525,10 @@ static void hiddenServerConnTask(void)
             if (hiddenServConn.heartbeattick % sysparam.heartbeatgap == 0)
             {
                 hiddenServConn.heartbeattick = 0;
-                if (timeOutId == -1)
-                {
-                    timeOutId = startTimer(80, moduleRspTimeout, 0);
-                }
+//                if (timeOutId == -1)
+//                {
+//                    timeOutId = startTimer(80, moduleRspTimeout, 0);
+//                }
                 protocolInfoResiter(getBatteryLevel(), sysinfo.outsidevoltage > 5.0 ? sysinfo.outsidevoltage : sysinfo.insidevoltage,
                                     dynamicParam.startUpCnt, dynamicParam.runTime);
                 protocolSend(HIDDEN_LINK, PROTOCOL_13, NULL);
@@ -601,6 +632,7 @@ void jt808ServerConnTask(void)
 {
     static uint8_t ret = 1;
     static uint16_t unLoginTick = 0;
+    static uint8 uploadflag = 0;
     if (isModuleRunNormal() == 0)
     {
         ledStatusUpdate(SYSTEM_LED_NETOK, 0);
@@ -700,15 +732,16 @@ void jt808ServerConnTask(void)
                 queryBatVoltage();
                 LogMessage(DEBUG_ALL, "Terminal heartbeat");
                 jt808SendToServer(TERMINAL_HEARTBEAT, NULL);
-                if (timeOutId == -1)
-                {
-                    timeOutId = startTimer(80, moduleRspTimeout, 0);
-                }
+//                if (timeOutId == -1)
+//                {
+//                    timeOutId = startTimer(80, moduleRspTimeout, 0);
+//                }
 
                 if (hbtTimeOutId == -1)
                 {
                     hbtTimeOutId = startTimer(1800, hbtRspTimeOut, 0);
                 }
+                uploadflag = 1;
             }
             if (getTcpNack())
             {
@@ -724,6 +757,40 @@ void jt808ServerConnTask(void)
                         gpsRestoreUpload();
                     }
                 }
+            }
+
+            if (sysinfo.mode123GpsFre == 0)
+            {
+            	if (jt808ServConn.runTick % 2 == 0)
+	            {
+	                //传完ram再传文件系统
+	                if (getTcpNack() == 0)
+	                {
+	                    if (dbUpload() == 0)
+	                    {
+	                        gpsRestoreUpload();
+	                    }
+	                }
+	            }
+            }
+            else 
+            {
+				if (uploadflag)
+				{
+					if (jt808ServConn.runTick % 2 == 0)
+					{
+						LogMessage(DEBUG_ALL, "111");
+						if (dbUpload() == 0)
+	                    {
+	                    	LogMessage(DEBUG_ALL, "222");
+	                        if (gpsRestoreUpload() == 0)
+	                        {
+								uploadflag = 0;
+								LogPrintf(DEBUG_ALL, "打包上传完成");
+	                        }
+	                    }
+	                }
+				}
             }
             break;
         default:
@@ -999,12 +1066,12 @@ static void agpsServerConnTask(void)
 	{
 		return ;
 	}
-//	if (gpsinfo->fixstatus || sysinfo.gpsOnoff == 0)
-//	{
-//		socketDel(AGPS_LINK);
-//		agpsRequestClear();
-//		return;
-//	}
+	if (gpsinfo->fixstatus || sysinfo.gpsOnoff == 0)
+	{
+		socketDel(AGPS_LINK);
+		agpsRequestClear();
+		return;
+	}
 	if (socketGetUsedFlag(AGPS_LINK) != 1)
 	{
 		agpsFsm = 0;

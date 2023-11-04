@@ -72,6 +72,8 @@ typedef struct
     uint8_t inWifiFlag				: 1;
     uint8_t petledOnoff				: 1;
     uint8_t petspkOnoff				: 1;
+    uint8_t uploadflag				: 1;
+    uint8_t hbtFlag					: 1;
     uint8_t lbsExtendEvt;
     uint8_t wifiExtendEvt;
     uint8_t ringWakeUpTick;
@@ -125,9 +127,12 @@ typedef struct
 	uint16_t inWifiTick;
     uint16_t nonetTick;
     uint8_t mode123Min;
+    uint16_t mode123RunTick;
     uint8_t ttstick;
     uint8_t ttsContent[60];
-	
+	uint8_t mode123GpsFre;
+	uint8_t wifiscanCnt;
+	uint8_t moduleFsm;
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;
@@ -158,6 +163,9 @@ void byteArrayInvert(uint8 *data, uint8 dataLen);
 void stringToLowwer(char *str, uint16_t strlen);
 void showByteData(uint8_t *mark, uint8_t *buf, uint16_t len);
 
+char *url_encode(char const *s, int len, int *new_length);
+uint8_t encodeUtf8(uint8_t* buf, int value);
+int enc_unicode_to_utf8_one(unsigned long unic, unsigned char *pOutput, int outSize);
 
 
 #endif

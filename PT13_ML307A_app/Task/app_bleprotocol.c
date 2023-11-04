@@ -62,7 +62,17 @@ static void appRespon(uint16_t connhandle, uint8 cmd, uint8 result)
 void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len)
 {
 	uint8_t readInd, size, crc, i;
-	uint8_t password[6] = {0};
+	uint8_t password[6] = { 0 };
+	int8_t ind = -1;
+	connectionInfoStruct *devinfo;
+	ind = getBeaconIdByHandle(connhandle);
+	if (ind < 0)
+	{
+		LogPrintf(DEBUG_ALL, "bleProtocolParser==>can not find this dev, conhandle:%d", connhandle);
+		return;
+	}
+	devinfo = getBeaconInfoByIndex(ind);
+	
 	for (readInd = 0; readInd < len; readInd++)
 	{
 		if (data[readInd] != 0x0C)
@@ -94,40 +104,13 @@ void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len)
 		}
 		//LogPrintf(DEBUG_ALL, "CMD[0x%02X]", data[readInd + 3]);
 		/*状态更新*/
-		//bleRelayList[ind].bleInfo.updateTick = sysinfo.sysTick;
-
+		devinfo->updateTick = sysinfo.sysTick;
 		switch (data[readInd + 2])
         {
         	case CMD_OTA:
 //            appRespon(CMD_OTA, 1);
 //            tmos_start_task(myAppTaskId, MY_APP_OTA_EVENT, MS1_TO_SYSTEM_TIME(100));
            		break;
-
-	        /*
-	         **蓝牙参数相关
-	         */
-        	//修改广播名称
-        	case CMD_SET_BROADCAST_NAME:
-//            if (len <= sizeof(sysparam.bleName))
-//            {
-//                tmos_memcpy(sysparam.bleName, data, len);
-//                sysparam.bleName[len] = 0;
-//                paramSaveAll();
-//                appBroadCastUpdate();
-//
-//            }
-            	appRespon(connhandle, data[readInd + 2], 1);
-            	break;
-        	//修改广播间隔
-        	case CMD_SET_MODIFY_ADVINTER:
-
-            	appRespon(connhandle, data[readInd + 2], 1);
-            	break;
-        	//修改连接间隔
-        	case CMD_SET_CONINTER:
-			
-            	appRespon(connhandle, data[readInd + 2], 1);
-            	break;
        		//鉴权
         	case CMD_AUTH_CMD:
 				byteToHexString(data + readInd + 3, password, 6);
@@ -204,6 +187,16 @@ void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len)
 				paramSaveAll();
 				appRespon(connhandle, data[readInd + 2], 1);
         		break;
+        	case CMD_DEV_LOGIN_INFO:
+				bleSendLoginInfo(connhandle);
+        		break;
+        	case CMD_DEV_HEARTBEAT:
+				bleSendHbtInfo(connhandle);
+        		break;
+        	case CMD_DEV_MASTER_INFO:
+				appRespon(connhandle, CMD_DEV_MASTER_INFO, 0);
+				LogPrintf(DEBUG_ALL, "Master info");
+        		break;
         }
 
 	    readInd += size + 3;
@@ -230,5 +223,68 @@ void bleGeneratePsdProtocol(uint8_t *psd)
 	byteToHexString(dest, debug, destlen);
 	debug[destlen * 2] = 0;
 	LogPrintf(DEBUG_ALL, "password[%d]:%s", destlen, debug);
+}
+
+void bleSendLoginInfo(uint16_t connhandle)
+{
+	uint8_t data[60] = { 0 }, dest[60] = { 0 };
+	uint8_t destlen = 0, i;
+	char debug[120] = { 0 };
+	connectionInfoStruct *devinfo = NULL;
+	devinfo = getBeaconInfoByHandle(connhandle);
+	if (devinfo == NULL)
+	{
+		LogPrintf(DEBUG_BLE, "Can not find ble info, connhandle:%d", connhandle);
+		return;
+	}
+	data[destlen++] = CMD_DEV_LOGIN_INFO;
+	/* 设备号 */
+	for (i = 0; i < 15; i++)
+	{
+		data[destlen++] = dynamicParam.SN[i];
+	}
+	/* sock id */
+	data[destlen++] = devinfo->login;
+	destlen = appPackProtocol(dest, CMD_GENERAL_RESPON, data, destlen);
+	appSendNotifyData(connhandle, dest, destlen);
+	byteToHexString(dest, debug, destlen);
+	debug[destlen * 2] = 0;
+	LogPrintf(DEBUG_ALL, "Login Info[%d]:%s", destlen, debug);
+}
+
+void bleSendHbtInfo(uint16_t connhandle)
+{
+	uint8_t destlen = 0, i;
+	uint8_t data[60] = { 0 }, dest[60] = { 0 };
+	uint16_t value;
+	char debug[120] = { 0 };
+	connectionInfoStruct *devinfo = NULL;
+	devinfo = getBeaconInfoByHandle(connhandle);
+	if (devinfo == NULL)
+	{
+		LogPrintf(DEBUG_BLE, "Can not find ble info, connhandle:%d", connhandle);
+		return;
+	}
+	data[destlen++] = CMD_DEV_HEARTBEAT;
+	/* 外电 */
+	value = (uint16_t)(sysinfo.outsidevoltage * 10);
+	data[destlen++] = (value >> 8) & 0xFF;
+	data[destlen++] = value & 0xFF;
+	/* 电量 */
+	value = getBatteryLevel();
+	data[destlen++] = value & 0xFF;
+	/* 步数 */
+	value = dynamicParam.step;
+	data[destlen++] = (value >> 8) & 0xFF;
+	data[destlen++] = value & 0xFF;
+	destlen = appPackProtocol(dest, CMD_GENERAL_RESPON, data, destlen);
+	appSendNotifyData(connhandle, dest, destlen);
+//	if (appSendNotifyData(connhandle, dest, destlen) == SUCCESS)
+//	{
+//		appBeaconSockflagSet(index);
+//	}
+	byteToHexString(dest, debug, destlen);
+	debug[destlen * 2] = 0;
+	LogPrintf(DEBUG_ALL, "SendHbtInfo[%d]:%s", destlen, debug);
 }
 

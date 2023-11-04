@@ -81,6 +81,9 @@
 //#define	BEGYEAR	        2000UL     // UTC started at 00:00:00 January 1, 2020
 #define	DAY             86400UL  // 24 hours * 60 minutes * 60 seconds
 
+#define BOOTLOADER_ADDRESS     0x0000
+#define jumpBootloader  ((  void  (*)  ( void ))  ((int*)BOOTLOADER_ADDRESS))
+
 
 typedef enum
 {
@@ -159,6 +162,7 @@ void portLowPowerCfg(void);
 
 void portAdcCfg(uint8_t onoff);
 float portGetAdcVol(ADC_SingleChannelTypeDef channel);
+uint8_t JumpToBoot(void);
 
 void portSleepEn(void);
 void portSleepDn(void);

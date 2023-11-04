@@ -23,6 +23,7 @@
 #define NET_REQUEST_CONNECT_ONE			0X00000001
 #define NET_REQUEST_WIFI_CTL			0X00000002
 #define NET_REQUEST_KEEPNET_CTL			0X00000004
+#define NET_REQUEST_OFFLINE				0X00000008	//该标志表示模组开启但不联网
 
 #define NET_REQUEST_ALL					0xFFFFFFFF
 
@@ -77,6 +78,13 @@
 #define DEV_EXTEND_OF_MY	0x01
 #define DEV_EXTEND_OF_BLE	0x02
 #define DEV_EXTEND_OF_FENCE	0x04
+
+
+typedef enum 
+{
+	MODULE_STATUS_CLOSE,
+	MODULE_STATUS_OPEN,
+}moduleFsm_e;
 
 typedef struct
 {
@@ -182,6 +190,7 @@ void ledStatusUpdate(uint8_t status, uint8_t onoff);
 void lbsRequestClear(void);
 
 void saveGpsHistory(void);
+void resetSafeArea(void);
 
 void gpsRequestSet(uint32_t flag);
 void gpsRequestClear(uint32_t flag);
@@ -199,6 +208,9 @@ void volCheckRequestClear(void);
 
 void alarmRequestSet(uint16_t request);
 void alarmRequestClear(uint16_t request);
+
+void wifiRspSuccess(void);
+void wifiTimeout(void);
 
 void lbsRequestSet(uint8_t ext);
 void wifiRequestSet(uint8_t ext);

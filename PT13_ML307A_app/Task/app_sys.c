@@ -451,5 +451,164 @@ void showByteData(uint8_t *mark, uint8_t *buf, uint16_t len)
 	LogMessageWL(DEBUG_ALL, debug, len*2);
 	
 }
+unsigned char *g_url_encode_buf;
+char *url_encode(char const *s, int len, int *new_length)
+{
+	unsigned char hexchars[] = "0123456789ABCDEF";
+    register unsigned char c;
+    unsigned char *to, *start;
+    unsigned char const *from, *end;
+	
+    from = (unsigned char *)s;
+    end  = (unsigned char *)s + len;	
+	unsigned char * url_encode_buf=  (unsigned char *) calloc(1, 120);
+	start = to = g_url_encode_buf;
+
+    while (from < end) 
+    {
+        c = *from++;
+
+        if (c == ' ') 
+        {
+            *to++ = '+';
+        } 
+        else if ((c < '0' && c != '-' && c != '.') ||
+                 (c < 'A' && c > '9') ||
+                 (c > 'Z' && c < 'a' && c != '_') ||
+                 (c > 'z')) 
+        {
+            to[0] = '%';
+            to[1] = hexchars[c >> 4];	
+            to[2] = hexchars[c & 15];	
+            to += 3;
+        }
+        else 
+        {
+            *to++ = c;
+        }
+    }
+    *to = 0;
+    if (new_length) 
+    {
+        *new_length = to - start;
+    }
+    return (char *) start;
+}
+
+
+uint8_t encodeUtf8(uint8_t* buf, int value)
+{
+
+	
+	//按照大端字节序写入缓冲区(低地址对应高数据位)
+	if(value <= 0x7f){
+		*buf = value & 0x7f;   //讲value存入内存中
+		return 1;
+	}	
+	else if(value <= 0x7ff){
+		//这种情况下utf8格式为110xxxxx 10xxxxxx
+		//先在低地址处写入高字节110xxxxx
+		//11000000 | ((value & 0111 1100 0000)>>6)
+		*buf++ = 0xc0 | ((value & 0x7c0)>>6);
+		//再在高地址处写入低字节10xxxxxx
+		//1000 0000 | (value & 0011 1111)
+		*buf = 0x80 | (value & 0x3f);
+		return 2;
+	}
+	else if(value <= 0xffff){
+		//这种情况下utf8格式为1110xxxx 10xxxxxx 10xxxxxx
+		//先在低地址写入高字节1110xxxx
+		*buf++ = 0xe0 | ((value & 0xf0000)>>12);
+		//然后在中地址写入中字节
+		*buf++ = 0x80 | ((value & 0xfc0)>>6);
+		//最后在高地址写入低字节
+		*buf = 0x80 | (value & 0x3f);
+		return 3;
+	}
+	else if(value <= 0x10ffff){
+		//在这种情况下utf8格式为11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+		//先在低地址写入高字节11110xxx
+		*buf++ = 0xf0 | ((value & 0x1c0000)>>18);
+		//再在第二段地址写入第二段字节10xxxxxx
+		*buf++ = 0x80 | ((value & 0x3f00)>>12);
+		//然后在第三段地址写入第三段字节10xxxxxx
+		*buf++ = 0x80 | ((value & 0xfc0)>>6);
+		//最后在高地址写入低字节10xxxxxx
+		*buf = 0x80 | (value & 0x3f);
+		return 4;
+	}
+	
+
+	return 0;
+}
+ 
+//返回解码utf8的字节数
+uint32_t getByteNumOfDecodeUtf8(uint8_t byte){
+	//byte应该是utf8的最高1字节，如果指向了utf8编码后面低字节部分则返回0
+	if((byte & 0xc0)==0x80) return 0;  //1000 0000
+	if((byte & 0xf8)==0xf0) return 4;  //1111 0000
+	if((byte & 0xf0)==0xf0) return 3;  //1110 0000
+	if((byte & 0xe0)==0xc0) return 2;  //1100 0000
+	return 1;          //ASCII码
+}
+
+int enc_unicode_to_utf8_one(unsigned long unic, unsigned char *pOutput, int outSize)
+{
+
+    if ( unic <= 0x0000007F )
+    {
+        // * U-00000000 - U-0000007F:  0xxxxxxx
+        *pOutput     = (unic & 0x7F);
+        return 1;
+    }
+    else if ( unic >= 0x00000080 && unic <= 0x000007FF )
+    {
+        // * U-00000080 - U-000007FF:  110xxxxx 10xxxxxx
+        *(pOutput+1) = (unic & 0x3F) | 0x80;
+        *pOutput     = ((unic >> 6) & 0x1F) | 0xC0;
+        return 2;
+    }
+    else if ( unic >= 0x00000800 && unic <= 0x0000FFFF )
+    {
+        // * U-00000800 - U-0000FFFF:  1110xxxx 10xxxxxx 10xxxxxx
+        *(pOutput+2) = (unic & 0x3F) | 0x80;
+        *(pOutput+1) = ((unic >>  6) & 0x3F) | 0x80;
+        *pOutput     = ((unic >> 12) & 0x0F) | 0xE0;
+        return 3;
+    }
+    else if ( unic >= 0x00010000 && unic <= 0x001FFFFF )
+    {
+        // * U-00010000 - U-001FFFFF:  11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+        *(pOutput+3) = (unic & 0x3F) | 0x80;
+        *(pOutput+2) = ((unic >>  6) & 0x3F) | 0x80;
+        *(pOutput+1) = ((unic >> 12) & 0x3F) | 0x80;
+        *pOutput     = ((unic >> 18) & 0x07) | 0xF0;
+        return 4;
+    }
+    else if ( unic >= 0x00200000 && unic <= 0x03FFFFFF )
+    {
+        // * U-00200000 - U-03FFFFFF:  111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx
+        *(pOutput+4) = (unic & 0x3F) | 0x80;
+        *(pOutput+3) = ((unic >>  6) & 0x3F) | 0x80;
+        *(pOutput+2) = ((unic >> 12) & 0x3F) | 0x80;
+        *(pOutput+1) = ((unic >> 18) & 0x3F) | 0x80;
+        *pOutput     = ((unic >> 24) & 0x03) | 0xF8;
+        return 5;
+    }
+    else if ( unic >= 0x04000000 && unic <= 0x7FFFFFFF )
+    {
+        // * U-04000000 - U-7FFFFFFF:  1111110x 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx
+        *(pOutput+5) = (unic & 0x3F) | 0x80;
+        *(pOutput+4) = ((unic >>  6) & 0x3F) | 0x80;
+        *(pOutput+3) = ((unic >> 12) & 0x3F) | 0x80;
+        *(pOutput+2) = ((unic >> 18) & 0x3F) | 0x80;
+        *(pOutput+1) = ((unic >> 24) & 0x3F) | 0x80;
+        *pOutput     = ((unic >> 30) & 0x01) | 0xFC;
+        return 6;
+    }
+ 
+    return 0;
+}
+
 
 

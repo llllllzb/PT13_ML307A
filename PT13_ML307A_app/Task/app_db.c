@@ -252,7 +252,14 @@ uint8_t dbUpload(void)
     {
         gpsdb.upSize = gpsdb.size = 0;
     }
-    return 1;
+    if (gpsdb.size == 0)
+    {
+		return 0;
+    }
+    else
+    {
+    	return 1;
+    }
 }
 
 static uint8 dbSectionWrite(uint8 *data, uint16 len)
@@ -455,3 +462,12 @@ uint16 dbCircularRead(uint8 *data, uint16 len)
     LogPrintf(DEBUG_ALL, "[E]∂¡»°Ω· ¯ Begin: %#X ~ End: %#X", dbinfo.dbBegin, dbinfo.dbEnd);
     return ret;
 }
+
+
+uint8_t dbIsNull(void)
+{
+	if (dbinfo.dbBegin == dbinfo.dbEnd)
+		return 1;
+	return 0;
+}
+

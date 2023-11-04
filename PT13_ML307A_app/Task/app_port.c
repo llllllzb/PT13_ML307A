@@ -786,6 +786,22 @@ void portDebugUartCfg(uint8_t onoff)
 //	}
 }
 
+/**************************************************
+@bref		跳转BOOT
+@param
+@return
+@note
+**************************************************/
+
+uint8_t JumpToBoot(void)
+{
+    uint8_t result = 0;
+    jumpBootloader();
+    return result;
+}
+
+
+
 /**
  * @brief   IIC 引脚初始化
  * @param
