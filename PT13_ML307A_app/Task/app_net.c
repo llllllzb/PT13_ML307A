@@ -441,13 +441,13 @@ static void moduleReleaseRstkey(void)
 
 void moduleReset(void)
 {
-    LogMessage(DEBUG_ALL, "moduleReset");
-    moduleInit();
-    POWER_OFF;
-    PWRKEY_HIGH;
-    RSTKEY_HIGH;
-    startTimer(10, modulePowerOn, 0);
-    socketDelAll();
+//    LogMessage(DEBUG_ALL, "moduleReset");
+//    moduleInit();
+//    POWER_OFF;
+//    PWRKEY_HIGH;
+//    RSTKEY_HIGH;
+//    startTimer(10, modulePowerOn, 0);
+//    socketDelAll();
 }
 
 /**************************************************

@@ -2237,9 +2237,9 @@ uint8_t SysBatDetection(void)
 
 void volCheckRequestSet(void)
 {
-	sysinfo.volCheckReq = 0;
-	sysinfo.canRunFlag = 0;
-	LogMessage(DEBUG_ALL, "volCheckRequestSet==>OK");
+//	sysinfo.volCheckReq = 0;
+//	sysinfo.canRunFlag = 0;
+//	LogMessage(DEBUG_ALL, "volCheckRequestSet==>OK");
 }
 
 /**************************************************
@@ -2264,10 +2264,10 @@ void volCheckRequestClear(void)
 
 static void sysModeRunTask(void)
 {
-	if (SysBatDetection() != 1)
-	{
-		return;
-	}
+//	if (SysBatDetection() != 1)
+//	{
+//		return;
+//	}
     switch (sysinfo.runFsm)
     {
         case MODE_CHOOSE:
