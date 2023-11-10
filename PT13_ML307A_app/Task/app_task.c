@@ -1405,7 +1405,7 @@ void mode4NetRequestTask(void)
 			if (sysinfo.netRequest != 0)
 			{
 				portAdcCfg(1);
-				modulePowerOn();
+				if (isModulePowerOff()) modulePowerOn();
 				portLedGpioCfg(1);
 				sysinfo.moduleFsm = MODULE_STATUS_OPEN;
 			}
@@ -1484,11 +1484,6 @@ void modeTryToDone(void)
     netRequestClear(NET_REQUEST_ALL);
     changeModeFsm(MODE_DONE);
     LogMessage(DEBUG_ALL, "modeTryToDone");
-}
-
-void systemShutDown(void)
-{
-	SYS_POWER_OFF;	
 }
 
 /**************************************************
@@ -1818,8 +1813,10 @@ static void modeStart(void)
     LogPrintf(DEBUG_ALL, "Mode:%d, startup:%d debug:%d %d", sysparam.MODE, dynamicParam.startUpCnt, sysparam.debug, dynamicParam.debug);
     lbsRequestSet(DEV_EXTEND_OF_MY);
     gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-    
-    modulePowerOn();
+    if (isModulePowerOff())
+    {
+    	modulePowerOn();
+   	}
     netResetCsqSearch();
     changeModeFsm(MODE_RUNING);
 }
@@ -2237,9 +2234,9 @@ uint8_t SysBatDetection(void)
 
 void volCheckRequestSet(void)
 {
-//	sysinfo.volCheckReq = 0;
-//	sysinfo.canRunFlag = 0;
-//	LogMessage(DEBUG_ALL, "volCheckRequestSet==>OK");
+	sysinfo.volCheckReq = 0;
+	sysinfo.canRunFlag = 0;
+	LogMessage(DEBUG_ALL, "volCheckRequestSet==>OK");
 }
 
 /**************************************************
@@ -2264,10 +2261,10 @@ void volCheckRequestClear(void)
 
 static void sysModeRunTask(void)
 {
-//	if (SysBatDetection() != 1)
-//	{
-//		return;
-//	}
+	if (SysBatDetection() != 1)
+	{
+		return;
+	}
     switch (sysinfo.runFsm)
     {
         case MODE_CHOOSE:
@@ -2845,6 +2842,71 @@ void resetSafeArea(void)
 	sysinfo.inWifiTick  = 0;
 }
 
+///**************************************************
+//@bref		模组管理
+//@param
+//@return
+//@note
+//
+//**************************************************/
+//
+//void netRequestTask(void)
+//{
+//	static uint16_t delaytick = 0;
+//	static uint16_t offlinetick = 0;
+//
+//	switch (sysinfo.moduleFsm)
+//	{
+//		case MODULE_STATUS_CLOSE:
+//			if (sysinfo.netRequest != 0)
+//			{
+//				portAdcCfg(1);
+//				modulePowerOn();
+//				portLedGpioCfg(1);
+//				sysinfo.moduleFsm = MODULE_STATUS_OPEN;
+//			}
+//			delaytick = 0;
+//			break;
+//		case MODULE_STATUS_OPEN:
+//			/* 如果回到蓝牙围栏则关闭模组 */
+//		    if (sysinfo.gpsRequest == 0 && sysinfo.alarmRequest    == 0 \
+//										&& sysinfo.wifiRequest     == 0 \
+//										&& sysinfo.lbsRequest      == 0 \
+//										&& sysinfo.netRequest      == 0 \
+//										&& sysinfo.outBleFenceFlag == 0)
+//			{
+//				delaytick++;
+//				if (delaytick >= 10)
+//				{
+//					//LogMessage(DEBUG_ALL, "mode4CloseModuleQuickly==>ok");
+//					delaytick = 0;
+//					modulePowerOff();
+//					portAdcCfg(0);
+//					portLedGpioCfg(0);
+//					portSpkGpioCfg(0);
+//					sysinfo.moduleFsm = MODULE_STATUS_CLOSE;
+//				}
+//			}
+//			/* 如果回到wifi围栏则切换到在网模式 */
+//			if (isModuleRunNormal())
+//			{
+//				if (sysinfo.netRequest == NET_REQUEST_OFFLINE) 
+//				{
+//					offlinetick++;
+//					if (offlinetick >= 10) {
+//						changeMode4Callback();
+//						offlinetick = 0;
+//					}
+//				}
+//			}
+//			break;
+//		default:
+//			sysinfo.moduleFsm = MODULE_STATUS_CLOSE;
+//			break;
+//	}
+//}
+
+
 /**************************************************
 @bref		1秒任务
 @param
@@ -2993,7 +3055,8 @@ void myTaskPreInit(void)
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
 	LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "SYS_GetLastResetSta:%x", SYS_GetLastResetSta());
-    
+    addCmdTTS(TTS_STARTUP);
+    netRequestSet(NET_REQUEST_TTS_CTL);
 }
 
 /**************************************************

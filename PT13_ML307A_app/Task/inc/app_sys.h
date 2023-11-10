@@ -74,6 +74,7 @@ typedef struct
     uint8_t petspkOnoff				: 1;
     uint8_t uploadflag				: 1;
     uint8_t hbtFlag					: 1;
+    uint8_t closeTTs				: 1;
     uint8_t lbsExtendEvt;
     uint8_t wifiExtendEvt;
     uint8_t ringWakeUpTick;
@@ -133,6 +134,7 @@ typedef struct
 	uint8_t mode123GpsFre;
 	uint8_t wifiscanCnt;
 	uint8_t moduleFsm;
+	uint8_t outputLockTick;		//AT指令输出锁计时
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

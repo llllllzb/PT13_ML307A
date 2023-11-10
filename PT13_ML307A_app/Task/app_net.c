@@ -12,6 +12,7 @@
 #include "app_socket.h"
 #include "app_jt808.h"
 #include "app_peripheral.h"
+#include "app_key.h"
 
 //联网相关结构体
 
@@ -184,17 +185,16 @@ uint8_t createNode(char *data, uint16_t datalen, uint8_t currentcmd)
 void outputNode(void)
 {
     static uint8_t lockFlag = 0;
-    static uint8_t lockTick = 0;
     static uint8_t sleepTick = 0;
     static uint8_t tickRange = 50;
     cmdNode_s *nextnode;
     cmdNode_s *currentnode;
     if (lockFlag)
     {
-        if (lockTick++ >= tickRange)
+        if (sysinfo.outputLockTick++ >= tickRange)
         {
             lockFlag = 0;
-            lockTick = 0;
+            sysinfo.outputLockTick = 0;
             LogMessage(DEBUG_ALL, "outputNode==>Unlock");
         }
         return ;
@@ -330,7 +330,7 @@ static void moduleInit(void)
 static void modulePressReleaseKey(void)
 {
     PWRKEY_HIGH;
-    moduleState.powerState = 1;
+    
     LogPrintf(DEBUG_ALL, "PowerOn Done");
 }
 /**************************************************
@@ -368,7 +368,7 @@ void modulePowerOn(void)
     startTimer(6, modulePressPowerKey, 0);
     moduleState.gpsFileHandle = 1;
     moduleCtrl.scanMode = 0;
-    
+    moduleState.powerState = 1;
     socketDelAll();
 }
 
@@ -441,13 +441,13 @@ static void moduleReleaseRstkey(void)
 
 void moduleReset(void)
 {
-//    LogMessage(DEBUG_ALL, "moduleReset");
-//    moduleInit();
-//    POWER_OFF;
-//    PWRKEY_HIGH;
-//    RSTKEY_HIGH;
-//    startTimer(10, modulePowerOn, 0);
-//    socketDelAll();
+    LogMessage(DEBUG_ALL, "moduleReset");
+    moduleInit();
+    POWER_OFF;
+    PWRKEY_HIGH;
+    RSTKEY_HIGH;
+    startTimer(10, modulePowerOn, 0);
+    socketDelAll();
 }
 
 /**************************************************
@@ -661,6 +661,7 @@ void netConnectTask(void)
                 moduleCtrl.atCount = 0;
                 moduleState.atResponOK = 0;
                 moduleState.cpinResponOk = 0;
+                ttsVolumeCfg(15);
                 changeProcess(CPIN_STATUS);
             }
             else
@@ -801,7 +802,7 @@ void netConnectTask(void)
 			sendModuleCmd(CIMI_CMD, NULL);
 			sendModuleCmd(MCCID_CMD, NULL);
 			sendModuleCmd(MCFG_CMD, "ri,1");
-			ttsVolumeCfg(15);
+			
 			queryBatVoltage();
             if (sysparam.MODE == MODE4 && sysinfo.netRequest == NET_REQUEST_OFFLINE)//如果仅仅只有offline那就跳到offline状态
             {
@@ -1300,6 +1301,7 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
     wifiList.apcount = 0;
     while (index >= 0)
     {
+    	sysinfo.outputLockTick = 75;	//解锁
         rebuf += index + 16;
         relen -= index + 16;
         index = getCharIndex(rebuf, relen, ',');
@@ -2218,6 +2220,13 @@ void mttsplayParser(uint8_t *buf, uint16_t len)
     {
         sysinfo.ttsPlayNow = 0;
         LogMessage(DEBUG_ALL, "tts play done!!!");
+		if (sysinfo.closeTTs == 1)
+		{
+			LogPrintf(DEBUG_ALL, "发送完关机播报");
+			systemShutDownSuccess();
+			systemShutDown();
+		}
+        sysinfo.closeTTs = 0;
     }
 }
 
@@ -2834,13 +2843,21 @@ void callPhone(char *tel)
 
 void playtts(char *tts)
 {
-    char buff[128];
+    char buff[128] = { 0 };
+    char debug[256] = { 0 };
     if (strlen(tts) >= 120)
     {
         return;
     }
     sprintf(buff, "\"%s\"", tts);
     sendModuleCmd(MTTSPLAY_CMD, buff);
+    byteToHexString(tts, debug, strlen(tts));
+    debug[strlen(tts)*2] = 0;
+    if (strncmp(debug, "E8AEBEE5A487E585B3E997AD", strlen("E8AEBEE5A487E585B3E997AD")) == 0)
+    {
+		LogPrintf(DEBUG_ALL, "正在发送关闭播报");
+		sysinfo.closeTTs = 1;
+    }
 }
 
 /**************************************************
@@ -2877,11 +2894,11 @@ void addCmdTTS(tts_Chinese_e ttscmd)
 	char tts[256] = {0};
 	char buf[3] = {0};
 	int hexbuf;
-	if (isModulePowerOff())
-	{
-		LogPrintf(DEBUG_ALL, "addTTS==>module is power off");
-		return;
-	}
+//	if (isModulePowerOff())
+//	{
+//		LogPrintf(DEBUG_ALL, "addTTS==>module is power off");
+//		return;
+//	}
 	portSpkGpioCfg(1);
 	/*转换*/
 	for (i = 0; i < sizeof(ttsTable) / sizeof(ttsTable[0]); i++)
@@ -3039,6 +3056,22 @@ void outputTTs(void)
 {
     tts_fifo_s *next;
     static uint8_t runTick = 0;
+    /* 如果关机,要判断是否是必须开机来发TTS */
+    if (netRequestGet(NET_REQUEST_TTS_CTL) == 0)
+    {
+		return;
+    }
+    if (isModulePowerOff())
+    {
+		modulePowerOn();
+		return;
+    }
+    /* 设备开机正常 */
+    if (moduleState.fsmState < CPIN_STATUS)
+    {
+		return;
+    }
+    
     if (sysinfo.ttsPlayNow)
     {
         if (runTick++ >= 20)
@@ -3071,7 +3104,7 @@ void outputTTs(void)
     if (ttsHead == NULL)
     {
         LogMessage(DEBUG_ALL, "TTS==>Done!!!");
-        
+        netRequestClear(NET_REQUEST_TTS_CTL);
     }
 }
 

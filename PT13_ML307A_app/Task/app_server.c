@@ -300,10 +300,10 @@ void privateServerConnTask(void)
             if (privateServConn.heartbeattick % sysparam.heartbeatgap == 0)
             {
                 privateServConn.heartbeattick = 0;
-//                if (timeOutId == -1)
-//                {
-//                    timeOutId = startTimer(120, moduleRspTimeout, 0);
-//                }
+                if (timeOutId == -1)
+                {
+                    timeOutId = startTimer(120, moduleRspTimeout, 0);
+                }
                 if (hbtTimeOutId == -1)
                 {
                     hbtTimeOutId = startTimer(1800, hbtRspTimeOut, 0);

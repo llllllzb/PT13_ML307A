@@ -5,7 +5,7 @@
  *      Author: nimo
  */
 #include "app_key.h"
-
+#include "app_net.h"
 
 keyctrl_t pwkkey;
 
@@ -14,6 +14,26 @@ void keyInit(void)
 	memset(&pwkkey, 0, sizeof(pwkkey));
 }
 
+static int8_t shutDownId = -1;
+void systemShutDown(void)
+{
+	SYS_POWER_OFF;	
+}
+
+void systemShutDownSuccess(void)
+{
+	if (shutDownId == -1)
+	{
+		stopTimer(shutDownId);
+		shutDownId = -1;
+	}
+}
+
+void systemShutDownTimeout(void)
+{
+	shutDownId = -1;
+	systemShutDown();
+}
 
 void keySosScan(void)
 {
@@ -46,7 +66,7 @@ void keySosScan(void)
             once = 1;
             pwkkey.triclick = 1;
             clickcnt = 0;
-            SYS_POWER_OFF;
+            
             LogMessage(DEBUG_ALL, "Key Triclick");
         }
         if(cnt >= 30)
@@ -90,14 +110,11 @@ void keyExcuteByStatus(void)
 	if (pwkkey.triclick)
 	{
 		pwkkey.clossprocess = 1;
-		if (sysinfo.runFsm == MODE_DONE || sysinfo.runFsm == MODE_STOP)
+		netRequestSet(NET_REQUEST_TTS_CTL);
+		addCmdTTS(TTS_SHUTDOWN);
+		if (shutDownId != -1)
 		{
-			startTimer(30, systemShutDown, 0);
-		}
-		else
-		{
-			modeTryToStop();
-			startTimer(30, systemShutDown, 0);
+			shutDownId = startTimer(300, systemShutDownTimeout, 0);
 		}
 	}
 	pwkkey.triclick = 0;

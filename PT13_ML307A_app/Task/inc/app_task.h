@@ -24,6 +24,8 @@
 #define NET_REQUEST_WIFI_CTL			0X00000002
 #define NET_REQUEST_KEEPNET_CTL			0X00000004
 #define NET_REQUEST_OFFLINE				0X00000008	//该标志表示模组开启但不联网
+#define NET_REQUEST_TTS_CTL				0X00000010	//发送TTS语音
+#define NET_REQUEST_SHUTDOWN_TTS		0X00000020	//发送关机语音
 
 #define NET_REQUEST_ALL					0xFFFFFFFF
 
@@ -215,6 +217,7 @@ void wifiTimeout(void);
 void lbsRequestSet(uint8_t ext);
 void wifiRequestSet(uint8_t ext);
 void wifiRequestClear(uint8_t ext);
+
 
 void motionOccur(void);
 void motionInit(void);

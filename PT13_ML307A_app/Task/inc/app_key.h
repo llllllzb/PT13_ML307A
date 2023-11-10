@@ -31,7 +31,7 @@ typedef struct
     uint8_t longpress;
     uint8_t triclick;
 	uint8_t down			: 1;
-	uint8_t clossprocess	: 1;
+	uint8_t clossprocess	: 1;	//正在关机
     uint8_t release;
     uint8_t presscomplete;
     
@@ -41,6 +41,9 @@ typedef struct
 }keyctrl_t;
 
 extern keyctrl_t soskey;
+
+void systemShutDownSuccess(void);
+void systemShutDownTimeout(void);
 
 void keyInit(void);
 void keyExcuteByStatus(void);

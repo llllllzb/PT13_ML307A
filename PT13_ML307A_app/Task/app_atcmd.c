@@ -210,6 +210,12 @@ static void doAtdebugCmd(uint8_t *buf, uint16_t len)
     	enc_unicode_to_utf8_one((unsigned long)item.item_data[1], msg, 1);
 		LogPrintf(DEBUG_ALL, "%x %x %x %x %x", item.item_data[1][0], msg[0],msg[1],msg[2],msg[3]);
     }
+    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"SHUTDOWN"))
+    {
+		netRequestSet(NET_REQUEST_TTS_CTL);
+		addCmdTTS(TTS_SHUTDOWN);
+
+    }
     else
     {
         if (item.item_data[0][0] >= '0' && item.item_data[0][0] <= '9')
