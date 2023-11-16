@@ -164,7 +164,7 @@ static bStatus_t appWriteAttrCB(uint16 connHandle, gattAttribute_t *pAttr,
         debugLen = len > 50 ? 50 : len;
         byteToHexString(pValue, debugStr, debugLen);
         debugStr[debugLen * 2] = 0;
-        LogPrintf(DEBUG_ALL, "Dev(%d)[%d]:%s", getBeaconIdByHandle(connHandle), connHandle, debugStr);
+        LogPrintf(DEBUG_ALL, "Dev rec(%d)[%d]:%s", getBeaconIdByHandle(connHandle), connHandle, debugStr);
         switch (uuid)
         {
             case APP_CHARACTERISTIC1_UUID:
@@ -740,7 +740,7 @@ void appBondPsdCfg(uint32_t psd)
 void appCreatePasswordBySn(char *sn)
 {
 	strncpy(sysparam.blePsw, sn, 7);
-	LogPrintf(DEBUG_ALL, "CreatePassword:%s", sysparam.blePsw);
+	LogPrintf(DEBUG_BLE, "CreatePassword:%s", sysparam.blePsw);
 	paramSaveAll();
 }
 
@@ -761,16 +761,16 @@ void appShowBondDecv(void)
     GAPBondMgr_GetParameter(GAPBOND_BOND_COUNT, &bondcount);
     if (bondcount <= 0)
     {
-        LogMessage(DEBUG_ALL, "No bond");
+        LogMessage(DEBUG_BLE, "No bond");
         return;
     }
-    LogPrintf(DEBUG_ALL, "Ble cnt:%d", bondcount);
+    LogPrintf(DEBUG_BLE, "Ble cnt:%d", bondcount);
     for (i = 0; i < bondcount; i++)
     {
 	    tmos_snv_read(mainRecordNvID(i), 6, addr);
 	    byteToHexString(addr, debug, 6);
 	    debug[12] = 0;
-	    LogPrintf(DEBUG_ALL, "Ble Mac[%d]:%s", i, debug);
+	    LogPrintf(DEBUG_BLE, "Ble Mac[%d]:%s", i, debug);
     }
 }
 
@@ -785,7 +785,7 @@ void appBeaconShowTaskId(void)
 	uint8_t i;
 	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
 	{
-		LogPrintf(DEBUG_ALL, "appBeaconInit==>Dev(%d)taskid:%d", i, beaconInfoList[i].taskID);
+		LogPrintf(DEBUG_BLE, "appBeaconInit==>Dev(%d)taskid:%d", i, beaconInfoList[i].taskID);
 	}
 }
 
@@ -804,53 +804,84 @@ static void appBeaconInit(void)
 	{
 		beaconInfoList[i].connectionHandle = GAP_CONNHANDLE_INIT;
 		beaconInfoList[i].taskID		   = TMOS_ProcessEventRegister(appPeripheralEventProcess);
-		LogPrintf(DEBUG_ALL, "appBeaconInit==>Dev(%d)taskid:%d", i, beaconInfoList[i].taskID);
+		LogPrintf(DEBUG_BLE, "appBeaconInit==>Dev(%d)taskid:%d", i, beaconInfoList[i].taskID);
 	}
 }
 
 /**************************************************
-@bref       蓝牙信标socket位置1
+@bref       蓝牙socket位置1
 @param
 @return
-@note	两个socketflag是互斥的，只能有1个置1
+@note	
+	两个socketflag是互斥的，只能有1个置1
+	设置1成功返回1，其余都是0
 **************************************************/
 
-void appBeaconSockflagSet(uint8_t ind, int8_t sockid)
+uint8_t appBeaconSockflagSet(uint8_t ind, uint8_t set, char *sn)
 {
 	uint8_t i, cnt = 0;
-
-	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+	if (set)
 	{
-		if (beaconInfoList[i].login != 0) {
-			cnt++;
-			break;
+		for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+		{
+			if (beaconInfoList[i].socksuccess == 0) 
+			{
+				cnt++;
+			}
 		}
-	}
-	if (cnt == 0 || (cnt == 1 && i == ind))
-	{
-		beaconInfoList[ind].login = 1;
-		LogPrintf(DEBUG_ALL, "appBeaconSockflagSet(%d)==>ok,sockid:%d", ind, beaconInfoList[ind].login);
+		/* 列表没有连接sock */
+		if (cnt >= PERIPHERAL_MAX_CONNECTION)
+		{
+			LogPrintf(DEBUG_BLE, "111");
+			beaconInfoList[ind].socksuccess = 1;
+			//
+			for (i = 0; i < 15; i++)
+			{
+				beaconInfoList[ind].mSn[i] = sn[i];
+			}
+			beaconInfoList[ind].mSn[15] = 0;
+			return 1;
+		}
+		/* 说明有一个已经连上，判断主机是否匹配 */
+		if (cnt != 0 && cnt < PERIPHERAL_MAX_CONNECTION &&
+			strncmp(sn, beaconInfoList[ind].mSn, 15) == 0 &&
+			beaconInfoList[ind].socksuccess)
+		{
+			
+			LogPrintf(DEBUG_BLE, "222");
+			beaconInfoList[ind].socksuccess = 1;
+			return 1;
+		}
+		LogPrintf(DEBUG_BLE, "333");
+		
+		return 0;
 	}
 	else
 	{
-		LogPrintf(DEBUG_ALL, "appBeaconSockflagSet(%d)==>fail", ind);
+		LogPrintf(DEBUG_BLE, "444");
+		beaconInfoList[ind].socksuccess = 0;
+		tmos_memset(beaconInfoList[ind].mSn, 0, sizeof(beaconInfoList[ind].mSn));
+		return 0;
 	}
 }
-
 /**************************************************
-@bref       蓝牙信标socket位清除
+@bref       查询蓝牙socksuccess状态
 @param
 @return
-@note	两个socketflag是互斥的，只能有1个置1
+@note	
 **************************************************/
 
-void appBeaconSockflagClear(uint8_t ind)
+int8_t appBeaconGetSockSuccess(void)
 {
-	uint8_t i;
-	beaconInfoList[ind].login = 1;
-	//LogPrintf(DEBUG_ALL, "appBeaconSockflagClear[%d]==>ok", ind);
+	for (uint8_t i  = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+	{
+		if (beaconInfoList[i].socksuccess)
+		{
+			return i;
+		}
+	}
+	return -1;
 }
-
 
 /**************************************************
 @bref       蓝牙信标信息录入
@@ -863,7 +894,7 @@ void appBeaconSockflagClear(uint8_t ind)
 static int appBeaconInfoAdd(gapRoleEvent_t *pEvent)
 {
 	int i;
-	char debug[20];
+	char debug[20] = { 0 };
 	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
 	{
 		if (beaconInfoList[i].useflag == 0)
@@ -879,21 +910,21 @@ static int appBeaconInfoAdd(gapRoleEvent_t *pEvent)
 			beaconInfoList[i].useflag 		   = 1;
 			byteToHexString(pEvent->linkCmpl.devAddr, debug, B_ADDR_LEN);
         	debug[B_ADDR_LEN * 2] = 0;
-        	LogPrintf(DEBUG_ALL, "-------------------------------------");
-        	LogPrintf(DEBUG_ALL, "*****Device Connect*****");
-			LogPrintf(DEBUG_ALL, "DeviceMac:%s", 		debug);
-		    LogPrintf(DEBUG_ALL, "DeviceType:%d", 		beaconInfoList[i].addrType);
-		    LogPrintf(DEBUG_ALL, "connectionHandle:%d", beaconInfoList[i].connectionHandle);
-		    LogPrintf(DEBUG_ALL, "connInterval:%d", 	beaconInfoList[i].connInterval);
-		    LogPrintf(DEBUG_ALL, "connLatency:%d", 		beaconInfoList[i].connLatency);
-		    LogPrintf(DEBUG_ALL, "connRole:%d", 		beaconInfoList[i].connRole);
-		    LogPrintf(DEBUG_ALL, "connTimeout:%d", 		beaconInfoList[i].connTimeout);
-		    LogPrintf(DEBUG_ALL, "taskId:%d", 			beaconInfoList[i].taskID);
-		    LogPrintf(DEBUG_ALL, "-------------------------------------");
+        	LogPrintf(DEBUG_BLE, "-------------------------------------");
+        	LogPrintf(DEBUG_BLE, "*****Device Connect*****");
+			LogPrintf(DEBUG_BLE, "DeviceMac:%s", 		debug);
+		    LogPrintf(DEBUG_BLE, "DeviceType:%d", 		beaconInfoList[i].addrType);
+		    LogPrintf(DEBUG_BLE, "connectionHandle:%d", beaconInfoList[i].connectionHandle);
+		    LogPrintf(DEBUG_BLE, "connInterval:%d", 	beaconInfoList[i].connInterval);
+		    LogPrintf(DEBUG_BLE, "connLatency:%d", 		beaconInfoList[i].connLatency);
+		    LogPrintf(DEBUG_BLE, "connRole:%d", 		beaconInfoList[i].connRole);
+		    LogPrintf(DEBUG_BLE, "connTimeout:%d", 		beaconInfoList[i].connTimeout);
+		    LogPrintf(DEBUG_BLE, "taskId:%d", 			beaconInfoList[i].taskID);
+		    LogPrintf(DEBUG_BLE, "-------------------------------------");
 		    appLocalNotifyAutoCtl(beaconInfoList[i].connectionHandle, 1);
 		    //DEBUG 加入鉴权功能之后要删掉下面两行
 		    beaconInfoList[i].connSuccess = 1;
-			LogPrintf(DEBUG_ALL, "Connhandle[%d]==>AuthSuccess", beaconInfoList[i].connectionHandle);
+			LogPrintf(DEBUG_BLE, "Connhandle[%d]==>AuthSuccess", beaconInfoList[i].connectionHandle);
 		    //tmos_start_task(beaconInfoList[i].taskID, APP_PERIPHERAL_TIMEOUT_TERMINATE_EVENT, MS1_TO_SYSTEM_TIME(10000));
 			return 1;
 		}
@@ -921,14 +952,14 @@ static int appBeaconInfoDel(gapRoleEvent_t *pEvent)
 		{
 			byteToHexString(beaconInfoList[i].addr, debug, B_ADDR_LEN);
         	debug[B_ADDR_LEN * 2] = 0;
-        	LogPrintf(DEBUG_ALL, "-------------------------------------");
-        	LogPrintf(DEBUG_ALL, "*****Device Terminate*****");
-			LogPrintf(DEBUG_ALL, "DeviceMac:%s", 		debug);
-		    LogPrintf(DEBUG_ALL, "DeviceType:%d", 		beaconInfoList[i].addrType);
-			LogPrintf(DEBUG_ALL, "TerminateHandle:%d", beaconInfoList[i].connectionHandle);
-			LogPrintf(DEBUG_ALL, "TerminateRole:%d", pEvent->linkTerminate.connRole);
-			LogPrintf(DEBUG_ALL, "TerminateReason:0x%X", pEvent->linkTerminate.reason);
-			LogPrintf(DEBUG_ALL, "-------------------------------------");
+        	LogPrintf(DEBUG_BLE, "-------------------------------------");
+        	LogPrintf(DEBUG_BLE, "*****Device Terminate*****");
+			LogPrintf(DEBUG_BLE, "DeviceMac:%s", 		debug);
+		    LogPrintf(DEBUG_BLE, "DeviceType:%d", 		beaconInfoList[i].addrType);
+			LogPrintf(DEBUG_BLE, "TerminateHandle:%d", beaconInfoList[i].connectionHandle);
+			LogPrintf(DEBUG_BLE, "TerminateRole:%d", pEvent->linkTerminate.connRole);
+			LogPrintf(DEBUG_BLE, "TerminateReason:0x%X", pEvent->linkTerminate.reason);
+			LogPrintf(DEBUG_BLE, "-------------------------------------");
 			/*不能memset直接全部清除是因为taskid唯一且无法停止*/
 			beaconInfoList[i].useflag		   = 0;
 			beaconInfoList[i].connectionHandle = GAP_CONNHANDLE_INIT;
@@ -979,7 +1010,7 @@ void appBeaconAuthSuccess(uint16_t connhandle)
 	if (getBeaconIdByHandle(connhandle) >= 0)
 	{
 		beaconInfoList[getBeaconIdByHandle(connhandle)].connSuccess = 1;
-		LogPrintf(DEBUG_ALL, "Connhandle[%d]==>AuthSuccess", connhandle);
+		LogPrintf(DEBUG_BLE, "Connhandle[%d]==>AuthSuccess", connhandle);
 	}
 	if (getBeaconTaskidByHandle(connhandle) >= 0)
 	{
@@ -1066,13 +1097,11 @@ int getBeaconTaskidByHandle(uint16_t handle)
 @param
 @return
 @note	
+	获取该信息忽略是否有设备连接进来
 **************************************************/
 connectionInfoStruct *getBeaconInfoByIndex(uint8_t index)
 {
-	if (beaconInfoList[index].useflag) {
-		return &beaconInfoList[index];
-	}
-	return NULL;
+	return &beaconInfoList[index];
 }
 
 /**************************************************
@@ -1109,8 +1138,10 @@ int isInsideBeaconFence(void)
 	uint8_t i;
 	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
 	{
-		if ((sysinfo.sysTick - beaconInfoList[i].updateTick) >= CONNTECT_TIMEOUT_MAXMIN) {
-			appBeaconSockflagClear(i);
+		if ((sysinfo.sysTick - beaconInfoList[i].updateTick) >= CONNTECT_TIMEOUT_MAXMIN &&
+			beaconInfoList[i].socksuccess)
+		{
+			appBeaconSockflagSet(i, 0, NULL);
 		}
 		if (beaconInfoList[i].connSuccess) {
 			return 1;
@@ -1138,7 +1169,7 @@ void BleFenceCheck(void)
 			if (sysinfo.outBleFenceFlag)
 			{
 				sysinfo.outBleFenceFlag = 0;
-				LogPrintf(DEBUG_ALL, "Dev enter ble fence");
+				LogPrintf(DEBUG_BLE, "Dev enter ble fence");
 			}
 			if (netRequestGet(NET_REQUEST_WIFI_CTL | NET_REQUEST_OFFLINE))
 			{
@@ -1162,7 +1193,7 @@ void BleFenceCheck(void)
 		if (sysinfo.outBleFenceFlag == 0)
 		{
 			sysinfo.outBleFenceFlag = 1;
-			LogPrintf(DEBUG_ALL, "Dev leave ble fence");
+			LogPrintf(DEBUG_BLE, "Dev leave ble fence");
 			wifiRequestSet(DEV_EXTEND_OF_FENCE);
 			netRequestSet(NET_REQUEST_OFFLINE);
 			if (sysinfo.kernalRun == 0)

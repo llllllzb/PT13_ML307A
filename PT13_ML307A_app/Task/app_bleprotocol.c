@@ -68,7 +68,7 @@ void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len)
 	ind = getBeaconIdByHandle(connhandle);
 	if (ind < 0)
 	{
-		LogPrintf(DEBUG_ALL, "bleProtocolParser==>can not find this dev, conhandle:%d", connhandle);
+		LogPrintf(DEBUG_BLE, "bleProtocolParser==>can not find this dev, conhandle:%d", connhandle);
 		return;
 	}
 	devinfo = getBeaconInfoByIndex(ind);
@@ -119,73 +119,13 @@ void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len)
 				{
 					appBeaconAuthSuccess(connhandle);
 					appRespon(connhandle, data[readInd + 2], 1);
-					LogMessage(DEBUG_ALL, "Authentication success");
+					LogMessage(DEBUG_BLE, "Authentication success");
 				}
 				else
 				{
 					appRespon(connhandle, data[readInd + 2], 0);
-					LogPrintf(DEBUG_ALL, "Authentication fail:%s  %s", password, sysparam.blePsw);
+					LogPrintf(DEBUG_BLE, "Authentication fail:%s  %s", password, sysparam.blePsw);
 				}
-        		break;
-        	case CMD_ONLINE_CTL_CMD:
-				if (data[readInd + 3] == 0x01)
-				{
-					portGsensorCtl(1);
-					sysinfo.mode123Min = data[readInd + 4];
-					lbsRequestSet(DEV_EXTEND_OF_MY);
-					gpsRequestSet(GPS_REQUEST_123_CTL | GPS_REQUEST_UPLOAD_ONE);
-					netRequestSet(NET_REQUEST_KEEPNET_CTL);
-					sysinfo.flag123 = 1;
-				    save123InstructionId();
-					LogPrintf(DEBUG_ALL, "GPS forced work %d min, and reporting every 10 seconds", sysinfo.mode123Min);
-				}
-				else
-				{
-					lbsRequestClear();
-					netRequestClear(NET_REQUEST_KEEPNET_CTL | NET_REQUEST_WIFI_CTL);
-					gpsRequestClear(NET_REQUEST_ALL);
-					sysinfo.mode123Min = 0;
-					sysinfo.flag123 = 0;
-					LogPrintf(DEBUG_ALL, "GPS forced work cancel");
-				}
-				appRespon(connhandle, data[readInd + 2], 1);
-        		break;
-        		//0C 02 B1 04 B7 0D  MODE4
-        		//0C 02 B1 02 B4 0D  MODE2
-        	case CMD_MODE_CMD:
-				switch (data[readInd + 3])
-				{
-					case MODE1:
-						gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-						sysparam.MODE = MODE1;
-						break;
-					case MODE2:
-						gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-						sysparam.MODE = MODE2;
-						break;
-					case MODE3:
-						gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-						sysparam.MODE = MODE3;
-						break;
-					case MODE4:
-						sysparam.MODE = MODE4;
-						break;
-					case MODE21:
-						gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-						sysparam.MODE = MODE21;
-						break;
-					case MODE23:
-						gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-						sysparam.MODE = MODE23;
-						break;
-					default:
-						gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-						sysparam.MODE = MODE2;
-						break;
-				}
-				LogPrintf(DEBUG_ALL, "Change to mode%d", sysparam.MODE);
-				paramSaveAll();
-				appRespon(connhandle, data[readInd + 2], 1);
         		break;
         	case CMD_DEV_LOGIN_INFO:
 				bleSendLoginInfo(connhandle);
@@ -194,8 +134,8 @@ void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len)
 				bleSendHbtInfo(connhandle);
         		break;
         	case CMD_DEV_MASTER_INFO:
-				appRespon(connhandle, CMD_DEV_MASTER_INFO, 0);
-				LogPrintf(DEBUG_ALL, "Master info");
+        		bleMasterInfo(connhandle, data + readInd + 4, ind, data[readInd + 3]);
+        		
         		break;
         }
 
@@ -222,14 +162,16 @@ void bleGeneratePsdProtocol(uint8_t *psd)
 	destlen = appPackProtocol(dest, CMD_AUTH_CMD, data, 3);
 	byteToHexString(dest, debug, destlen);
 	debug[destlen * 2] = 0;
-	LogPrintf(DEBUG_ALL, "password[%d]:%s", destlen, debug);
+	LogPrintf(DEBUG_BLE, "password[%d]:%s", destlen, debug);
 }
 
 void bleSendLoginInfo(uint16_t connhandle)
 {
 	uint8_t data[60] = { 0 }, dest[60] = { 0 };
 	uint8_t destlen = 0, i;
+	int8_t ind;
 	char debug[120] = { 0 };
+	
 	connectionInfoStruct *devinfo = NULL;
 	devinfo = getBeaconInfoByHandle(connhandle);
 	if (devinfo == NULL)
@@ -238,18 +180,28 @@ void bleSendLoginInfo(uint16_t connhandle)
 		return;
 	}
 	data[destlen++] = CMD_DEV_LOGIN_INFO;
-	/* 设备号 */
+	/* 本机设备号 */
 	for (i = 0; i < 15; i++)
 	{
 		data[destlen++] = dynamicParam.SN[i];
 	}
-	/* sock id */
-	data[destlen++] = devinfo->login;
+	/* login success flag */
+	ind = appBeaconGetSockSuccess();
+	data[destlen++] = ind < 0 ? 0 : 1;
+	/* 主机设备号 */
+	if (ind >= 0)
+	{
+		connectionInfoStruct *masterSN = getBeaconInfoByIndex(ind);
+		for (i = 0; i < 15; i++)
+		{
+			data[destlen++] = masterSN->mSn[i];
+		}
+	}
 	destlen = appPackProtocol(dest, CMD_GENERAL_RESPON, data, destlen);
 	appSendNotifyData(connhandle, dest, destlen);
 	byteToHexString(dest, debug, destlen);
 	debug[destlen * 2] = 0;
-	LogPrintf(DEBUG_ALL, "Login Info[%d]:%s", destlen, debug);
+	LogPrintf(DEBUG_BLE, "Send Login info(%d)[%d]:%s", ind, connhandle, debug);
 }
 
 void bleSendHbtInfo(uint16_t connhandle)
@@ -285,6 +237,38 @@ void bleSendHbtInfo(uint16_t connhandle)
 //	}
 	byteToHexString(dest, debug, destlen);
 	debug[destlen * 2] = 0;
-	LogPrintf(DEBUG_ALL, "SendHbtInfo[%d]:%s", destlen, debug);
+	LogPrintf(DEBUG_ALL, "Send HbtInfo[%d]:%s", destlen, debug);
 }
+
+void bleMasterInfo(uint16_t connhandle, char *sn, uint8_t ind, uint8_t socksuccess)
+{
+	uint8_t destlen = 0, i, ret = 0;
+	uint8_t data[60] = { 0 }, dest[60] = { 0 };
+	char debug[121] = { 0 };
+	connectionInfoStruct *devinfo = NULL;
+	devinfo = getBeaconInfoByHandle(connhandle);
+	if (devinfo == NULL)
+	{
+		LogPrintf(DEBUG_BLE, "Can not find ble info, connhandle:%d", connhandle);
+		return;
+	}
+	data[destlen++] = CMD_DEV_MASTER_INFO;
+	ret = appBeaconSockflagSet(getBeaconIdByHandle(connhandle), socksuccess, sn);
+	if (ret)
+	{
+		/* 回归安全围栏,如果还有别的类型的请求,gps wifi等请求,这里可能会影响 */
+		resetSafeArea();
+	}
+	else
+	{
+		
+	}
+	data[destlen++] = ret;
+	destlen = appPackProtocol(dest, CMD_GENERAL_RESPON, data, destlen);
+	appSendNotifyData(connhandle, dest, destlen);
+	byteToHexString(dest, debug, destlen);
+	debug[destlen * 2] = 0;
+	LogPrintf(DEBUG_BLE, "Send Master Info[%d]:%s", connhandle, debug);
+}
+
 

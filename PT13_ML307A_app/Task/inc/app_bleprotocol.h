@@ -45,12 +45,11 @@
 #define CMD_GET_SHIEL_ALARM_HOLD_PARAM		0x17  //读取屏蔽电压保持参数
 
 /**
- * 设备连上后，主机会询问从机的SN号
- * 从机成功发送SN号到主机之后，标记sockflag（互斥）
- * sockflag只有在持续3分钟无协议通讯才会被清除
- * sockflag信息每次会跟随心跳发送给主机
- * 主机端检测到sockflag开启
- * 
+ * 设备连上后，主机通过CMD_DEV_LOGIN_INFO询问从机的SN号
+ * 从机发送自身的SN号和socksuccess状态，如果socksuccess为1，会顺便把主机SN号信息（也就是替PT13上报的主机设备号）也发送给主机
+ * 主机一旦确认PT13处于为socksuccess为0且自身有空余链路，就会发CMD_DEV_MASTER_INFO信息告知PT13主机的SN号且将socksuccess置1
+ * login状态在持续3分钟无协议通讯才会被清除或者主机发送CMD_DEV_MASTER_INFO将socksuccess清除
+ * login有更新，立即在广播包上体现，以免其他主机重复连接
  */
 #define CMD_DEV_LOGIN_INFO                  0x30  //蓝牙上报信息
 #define CMD_DEV_HEARTBEAT					0x31
@@ -83,6 +82,7 @@ void bleProtocolParser(uint16_t connhandle, uint8_t *data, uint16_t len);
 void bleGeneratePsdProtocol(uint8_t *psd);
 void bleSendHbtInfo(uint16_t connhandle);
 void bleSendLoginInfo(uint16_t connhandle);
+void bleMasterInfo(uint16_t connhandle, char *sn, uint8_t ind, uint8_t socksuccess);
 
 
 

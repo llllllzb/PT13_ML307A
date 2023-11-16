@@ -135,6 +135,8 @@ typedef struct
 	uint8_t wifiscanCnt;
 	uint8_t moduleFsm;
 	uint8_t outputLockTick;		//AT指令输出锁计时
+
+
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

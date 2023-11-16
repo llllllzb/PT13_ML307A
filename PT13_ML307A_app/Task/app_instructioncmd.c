@@ -63,6 +63,7 @@ static uint8_t serverType;
 static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
 {
     insParam_s *insparam;
+    char debug[128] = { 0 };
     switch (mode)
     {
         case DEBUG_MODE:
@@ -90,8 +91,10 @@ static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *pa
         case BLE_MODE:
         	if (param != NULL)
         	{
+        		sprintf(debug, "RE:%s", buf);
+        		debug[len + 3] = 0;
 	        	insparam = (insParam_s *)param;
-	            appSendNotifyData(insparam->bleConhandle, buf, len);
+	            appSendNotifyData(insparam->bleConhandle, debug, len+3);
             }
             break;
         case JT808_MODE:

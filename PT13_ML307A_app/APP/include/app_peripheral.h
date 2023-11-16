@@ -26,14 +26,14 @@ typedef struct{
 	uint8_t  connSuccess;		 //!<这个标志意味着已经被PT02连接，且两个连接标志位只能有一个置1，若是被手机或其他主机连接这个表示也不会置1
 	uint8_t  addr[6];
 	uint8_t  addrType;
-	uint8_t  login;
     uint16_t connectionHandle;   //!< Connection Handle from controller used to ref the device
     uint8_t  connRole;            //!< Connection formed as Master or Slave
     uint16_t connInterval;       //!< Connection Interval
     uint16_t connLatency;        //!< Connection Latency
     uint16_t connTimeout;        //!< Connection Timeout
     uint16_t updateTick;
-    uint16_t dataReq;
+    uint8_t  socksuccess;
+    uint8_t  mSn[16];
 }connectionInfoStruct;
 
 
@@ -50,9 +50,12 @@ void appBeaconInfoDelAll(void);
 void appShowBondDecv(void);
 void appBeaconShowTaskId(void);
 void appCreatePasswordBySn(char *sn);
-void appBeaconSockflagSet(uint8_t ind, int8_t sockid);
+
 connectionInfoStruct *getBeaconInfoByIndex(uint8_t index);
 connectionInfoStruct *getBeaconInfoByHandle(uint16_t handle);
+uint8_t appBeaconSockflagSet(uint8_t ind, uint8_t set, char *sn);
+int8_t appBeaconGetSockSuccess(void);
+
 
 void appBondPsdCfg(uint32_t psd);
 void BleFenceCheck(void);
