@@ -97,6 +97,7 @@ typedef enum
     QIACT_STATUS,
     NORMAL_STATUS,
     OFFLINE_STATUS,
+    WAIT_STATUS,
 } moduleStatus_s;
 
 /*指令集对应结构体*/
@@ -198,9 +199,6 @@ uint8_t  sendModuleCmd(uint8_t cmd, char *param);
 void modulePowerOn(void);
 void modulePowerOff(void);
 void moduleReset(void);
-void netRequestSet(uint32_t req);
-void netRequestClear(uint32_t req);
-uint8_t netRequestGet(uint32_t req);
 
 void openSocket(uint8_t link, char *server, uint16_t port);
 void closeSocket(uint8_t link);
@@ -247,7 +245,7 @@ uint8_t isModuleRunNormal(void);
 uint8_t isModulePowerOnOk(void);
 uint8_t isModulePowerOff(void);
 uint8_t getModuleStatus(void);
-
+void moduleInit(void);
 void stopCall(void);
 void callPhone(char *tel);
 void outputTTs(void);

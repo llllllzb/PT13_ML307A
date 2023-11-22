@@ -220,9 +220,10 @@ void outputNode(void)
 
         //数据发送
         portUartSend(&usart0_ctl, (uint8_t *)currentnode->data, currentnode->datalen);
+        /* 模组在使用的过程中可能会掉电 */
         if (timeOutId == -1 && moduleState.cmd != MWIFISCANSTART_CMD)
         {
-            timeOutId = startTimer(120, moduleRspTimeout, 0);
+            timeOutId = startTimer(1000, moduleRspTimeout, 0);
         }
         if (currentnode->data[0] != 0X78 && currentnode->data[0] != 0x79 && currentnode->data[0] != 0x7E)
         {
@@ -316,7 +317,7 @@ void sendModuleDirect(char *param)
 @note
 **************************************************/
 
-static void moduleInit(void)
+void moduleInit(void)
 {
     memset(&moduleState, 0, sizeof(moduleState_s));
 }
@@ -395,7 +396,7 @@ static void modulePowerOffRelease(void)
 **************************************************/
 static void modulePowerOffProcess(void)
 {
-    PWRKEY_LOW;
+    POWER_OFF;
 	startTimer(37, modulePowerOffRelease, 0);
 }
 /**************************************************
@@ -411,12 +412,12 @@ void modulePowerOff(void)
     portModuleGpioCfg(1);
     portUartCfg(APPUSART0, 0, 57600, NULL);
     POWER_OFF;
-    RSTKEY_HIGH;
-    PWRKEY_HIGH;
+    RSTKEY_LOW;
+    PWRKEY_LOW;
     //startTimer(5, modulePowerOffProcess, 0);
     moduleInit();
     sysinfo.moduleRstFlag = 1;
-    socketDelAll();
+    //socketDelAll();
     portModuleGpioCfg(0);
 }
 
@@ -444,9 +445,9 @@ void moduleReset(void)
     LogMessage(DEBUG_ALL, "moduleReset");
     moduleInit();
     POWER_OFF;
-    PWRKEY_HIGH;
-    RSTKEY_HIGH;
-    startTimer(10, modulePowerOn, 0);
+    PWRKEY_LOW;
+    RSTKEY_LOW;
+    startTimer(20, modulePowerOn, 0);
     socketDelAll();
 }
 
@@ -601,42 +602,6 @@ static void queryRecvBuffer(void)
     }
 }
 
-/**************************************************
-@bref		网络请求设置
-@param
-@return
-@note
-**************************************************/
-
-void netRequestSet(uint32_t req)
-{
-	sysinfo.netRequest |= req;
-	LogPrintf(DEBUG_ALL, "netRequestSet==>0x%04x", req);
-}
-
-/**************************************************
-@bref		网络请求清除
-@param
-@return
-@note
-**************************************************/
-
-void netRequestClear(uint32_t req)
-{
-	sysinfo.netRequest &= ~req;
-	LogPrintf(DEBUG_ALL, "netRequestClear==>0x%04x", req);
-}
-
-/**************************************************
-@bref		网络请求获取
-@param
-@return
-@note
-**************************************************/
-uint8_t netRequestGet(uint32_t req)
-{
-	return (sysinfo.netRequest & req);
-}
 
 /**************************************************
 @bref		联网准备任务
@@ -744,6 +709,7 @@ void netConnectTask(void)
                         else
                         {
                             modeTryToStop();
+                            sysinfo.noNetFlag = 1;
                         }
                     }
                     else
@@ -781,6 +747,7 @@ void netConnectTask(void)
                         else
                         {
                             modeTryToStop();
+                            sysinfo.noNetFlag = 1;
                         }
 
                         LogMessage(DEBUG_ALL, "Register timeout,try to skip");
@@ -804,7 +771,9 @@ void netConnectTask(void)
 			sendModuleCmd(MCFG_CMD, "ri,1");
 			
 			queryBatVoltage();
-            if (sysparam.MODE == MODE4 && sysinfo.netRequest == NET_REQUEST_OFFLINE)//如果仅仅只有offline那就跳到offline状态
+             if (sysinfo.netRequest == NET_REQUEST_OFFLINE  || 
+             	sysinfo.netRequest == NET_REQUEST_WIFI_CTL ||
+             	sysinfo.netRequest == (NET_REQUEST_OFFLINE | NET_REQUEST_WIFI_CTL))//如果仅仅只有offline那就跳到offline状态
             {
 				moduleSleepCtl(1);
 				changeProcess(OFFLINE_STATUS);
@@ -846,9 +815,16 @@ void netConnectTask(void)
         case NORMAL_STATUS:
             socketSchedule();
             queryRecvBuffer();
+            if (sysinfo.netRequest == NET_REQUEST_OFFLINE)
+            {
+				moduleSleepCtl(1);
+				changeProcess(OFFLINE_STATUS);
+            }
             break;
         case OFFLINE_STATUS:
-			if (sysparam.MODE != MODE4 || (sysinfo.netRequest != 0 && sysinfo.netRequest != NET_REQUEST_OFFLINE))
+        	/* 仅存在offline和wifi不会上网 */
+			if (sysparam.MODE != MODE4 ||
+			(sysinfo.netRequest != 0 && sysinfo.netRequest != NET_REQUEST_OFFLINE && sysinfo.netRequest != NET_REQUEST_WIFI_CTL && sysinfo.netRequest != (NET_REQUEST_WIFI_CTL | NET_REQUEST_OFFLINE)))
 			{
 				gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
 				changeProcess(QIACT_STATUS);
@@ -1360,19 +1336,24 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
             if (wifiFenceCheck(&wifiList) == 0)
             {
             	LogPrintf(DEBUG_ALL, "Not in wifi fence");
-            	if (netRequestGet(NET_REQUEST_WIFI_CTL) == 0)
-            	{
-				 	netRequestSet(NET_REQUEST_WIFI_CTL);
-				 	alarmRequestSet(ALARM_LEAVESAFEAREA_REQUEST);
+
+				if (sysinfo.outWifiFenceFlag == 0)
+				{
+				 	sysinfo.outWifiFenceFlag = 1;
 				}
+
             }
             else
             {
             	LogPrintf(DEBUG_ALL, "In wifi fence");
-				if (netRequestGet(NET_REQUEST_WIFI_CTL))
+				if (sysinfo.outWifiFenceFlag)
 				{
-					netRequestClear(NET_REQUEST_WIFI_CTL);
-					alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
+					sysinfo.outWifiFenceFlag = 0;
+					if (sysinfo.safeAreaFlag == 0)
+					{
+						alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
+						sysinfo.safeAreaFlag = 1;
+					}
 				}
             }
         }
@@ -1815,7 +1796,7 @@ static void mccidParser(uint8_t *buf, uint16_t len)
 void primarySockErrCallBack(void)
 {
 	moduleCtrl.qiopenCount++;
-	if (moduleCtrl.qiopenCount >= 4)
+	if (moduleCtrl.qiopenCount >= 3)
 	{
 		moduleReset();
 		moduleCtrl.qiopenCount = 0;
@@ -1853,7 +1834,7 @@ void mipopenParser(uint8_t *buf, uint16_t len)
 		if (result == 0)
 		{
 			socketSetConnState(link, SOCKET_CONN_SUCCESS);
-			if (link == NORMAL_LINK)
+			if (link == NORMAL_LINK || link == JT808_LINK)
 			{
 				moduleCtrl.qiopenCount = 0;
 			}

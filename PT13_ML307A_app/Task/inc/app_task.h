@@ -20,14 +20,20 @@
 
 #define GPS_REQUEST_ALL					0xFFFFFFFF
 
-#define NET_REQUEST_CONNECT_ONE			0X00000001
-#define NET_REQUEST_WIFI_CTL			0X00000002
-#define NET_REQUEST_KEEPNET_CTL			0X00000004
-#define NET_REQUEST_OFFLINE				0X00000008	//该标志表示模组开启但不联网
+#define NET_REQUEST_CONNECT_ONE			0X00000001	//主动上报一次位置
+#define NET_REQUEST_WIFI_CTL			0X00000002	//开启模组去扫描WIFI，不一定要联网
+#define NET_REQUEST_KEEPNET_CTL			0X00000004	//*保持链路常在(该状态与NET_REQUEST_OFFLINE互斥)
+#define NET_REQUEST_OFFLINE				0X00000008	//*该标志表示模组开启但不联网(该状态与NET_REQUEST_KEEPNET_CTL互斥)
 #define NET_REQUEST_TTS_CTL				0X00000010	//发送TTS语音
 #define NET_REQUEST_SHUTDOWN_TTS		0X00000020	//发送关机语音
+#define NET_REQUEST_ALARM_ONE			0X00000040  //开机上报一次报警
 
 #define NET_REQUEST_ALL					0xFFFFFFFF
+
+/* 模组工作状态 */
+#define NET_STATUS_CLOSE				0x0001		//该状态下
+#define NET_STATUS_OPEN					0x0002		//
+
 
 
 #define ALARM_LIGHT_REQUEST				0x0001 //感光
@@ -86,6 +92,7 @@ typedef enum
 {
 	MODULE_STATUS_CLOSE,
 	MODULE_STATUS_OPEN,
+	MODULE_STATUS_WAIT,
 }moduleFsm_e;
 
 typedef struct
@@ -193,12 +200,15 @@ void lbsRequestClear(void);
 
 void saveGpsHistory(void);
 void resetSafeArea(void);
+void updateModuleStatus(void);
 
 void gpsRequestSet(uint32_t flag);
 void gpsRequestClear(uint32_t flag);
 uint32_t gpsRequestGet(uint32_t flag);
 void gpsTcpSendRequest(void);
-
+uint8_t netRequestOtherGet(uint32_t req);
+void movingStatusCheck(void);
+void wifiCheckByStep(void);
 void motionClear(void);
 
 uint8_t gpsInWait(void);
@@ -217,6 +227,9 @@ void wifiTimeout(void);
 void lbsRequestSet(uint8_t ext);
 void wifiRequestSet(uint8_t ext);
 void wifiRequestClear(uint8_t ext);
+void netRequestSet(uint32_t req);
+void netRequestClear(uint32_t req);
+uint8_t netRequestGet(uint32_t req);
 
 
 void motionOccur(void);

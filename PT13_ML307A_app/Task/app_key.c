@@ -99,6 +99,16 @@ void keySosScan(void)
     //LogPrintf(DEBUG_ALL, "soskeycnt=%d", cnt);
 }
 
+void systemShutDownCallback(void)
+{
+	netRequestSet(NET_REQUEST_TTS_CTL);
+	addCmdTTS(TTS_SHUTDOWN);
+	if (shutDownId != -1)
+	{
+		shutDownId = startTimer(300, systemShutDownTimeout, 0);
+	}
+	LogPrintf(DEBUG_ALL, "systemShutDownCallback");
+}
 
 void keyExcuteByStatus(void)
 {
@@ -110,12 +120,7 @@ void keyExcuteByStatus(void)
 	if (pwkkey.triclick)
 	{
 		pwkkey.clossprocess = 1;
-		netRequestSet(NET_REQUEST_TTS_CTL);
-		addCmdTTS(TTS_SHUTDOWN);
-		if (shutDownId != -1)
-		{
-			shutDownId = startTimer(300, systemShutDownTimeout, 0);
-		}
+		systemShutDownCallback();
 	}
 	pwkkey.triclick = 0;
 }

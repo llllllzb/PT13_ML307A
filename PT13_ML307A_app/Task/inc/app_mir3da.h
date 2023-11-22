@@ -44,40 +44,37 @@ Macro definitions - Register define for Gsensor
 #define REG_ACC_Z_MSB               0x07
 #define REG_FIFO_STATUS             0x08
 #define REG_MOTION_FLAG             0x09
-#define REG_NEWDATA_FLAG            0x0A
-#define REG_TAP_ACTIVE_STATUS       0x0B
-#define REG_ORIENT_STATUS	        0x0C
 #define REG_STEPS_MSB               0x0D
 #define REG_STEPS_LSB               0x0E
 #define REG_RESOLUTION_RANGE        0x0F
-#define REG_ODR_AXIS                0x10
-#define REG_MODE_BW                 0x11
+#define REG_MODE_ODR                0x10
+#define REG_MODE_AXIS               0x11
 #define REG_SWAP_POLARITY           0x12
 #define REG_FIFO_CTRL               0x14
 #define REG_INT_SET0                0x15
 #define REG_INT_SET1                0x16
 #define REG_INT_SET2                0x17
 #define REG_INT_MAP1                0x19
-#define REG_INT_MAP2                0x1a
-#define REG_INT_MAP3                0x1b
+#define REG_INT_MAP2                0x1A
+#define REG_INT_MAP3                0x1B
 #define REG_INT_CONFIG              0x20
 #define REG_INT_LATCH               0x21
 #define REG_FREEFALL_DUR            0x22
 #define REG_FREEFALL_THS            0x23
 #define REG_FREEFALL_HYST           0x24
-#define REG_ACTIVE_DUR              0x27
-#define REG_ACTIVE_THS              0x28
+#define REG_TAP_QUIET               0x29
 #define REG_TAP_DUR                 0x2A
 #define REG_TAP_THS                 0x2B
 #define REG_ORIENT_HYST             0x2C
 #define REG_Z_BLOCK                 0x2D
-#define REG_RESET_STEP				0x2E
-#define REG_STEP_CONGIF1			0x2F
-#define REG_STEP_CONGIF2			0x30
-#define REG_STEP_CONGIF3			0x31
-#define REG_STEP_CONGIF4			0x32
+#define REG_RESET_STEP              0x2E
 #define REG_STEP_FILTER             0x33
 #define	REG_SM_THRESHOLD            0x34
+#define REG_ACTIVE_DUR              0x38
+#define REG_ACTIVE_X_THS            0x39
+#define REG_ACTIVE_Y_THS            0x3A
+#define REG_ACTIVE_Z_THS            0x3B
+
 
 #define DIFF_CALIBRATION 1
 
@@ -124,16 +121,15 @@ Macro definitions - Register define for Gsensor
 #define NSA_REG_STEP_CONGIF4			0x32
 #define NSA_REG_STEP_FILTER             0x33
 
-void mir3da_init_pedometer(void);
 
 s8_m mir3da_open_interrupt(u8_m th);
 
 s8_m mir3da_read_data(s16_m *x, s16_m *y, s16_m *z);
 
-
+s8_m mir3da_init(void);
 s8_m read_gsensor_id(void);
 s8_m readInterruptConfig(void);
-
+s8_m mir3da_set_enable(u8_m enable);
 void startStep(void);
 void stopStep(void);
 u16_m getStep(void);

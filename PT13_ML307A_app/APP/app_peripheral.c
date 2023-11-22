@@ -168,11 +168,8 @@ static bStatus_t appWriteAttrCB(uint16 connHandle, gattAttribute_t *pAttr,
         switch (uuid)
         {
             case APP_CHARACTERISTIC1_UUID:
-            	insParam.bleConhandle = connHandle;
-            	if (pValue[0] != 0x0C) {
-            	
-                	instructionParser(pValue, len, BLE_MODE, &insParam);
-                }
+            	insParam.bleConhandle = connHandle;            	
+                instructionParser(pValue, len, BLE_MODE, &insParam);
                 bleProtocolParser(connHandle, pValue, len);
                 break;
             case GATT_CLIENT_CHAR_CFG_UUID:
@@ -277,7 +274,7 @@ void appPeripheralInit(void)
     appBeaconInit();
     tmos_set_event(appPeripheralTaskId, APP_PERIPHERAL_START_EVENT);
 	/* 开启蓝牙的一秒任务 */
-    //tmos_start_reload_task(appPeripheralTaskId, APP_PERIPHERAL_ONEMINUTE_EVENT, MS1_TO_SYSTEM_TIME(1000));
+    tmos_start_reload_task(appPeripheralTaskId, APP_PERIPHERAL_ONEMINUTE_EVENT, MS1_TO_SYSTEM_TIME(1000));
 }
 
 /*
@@ -446,7 +443,13 @@ static tmosEvents appPeripheralEventProcess(tmosTaskID taskID, tmosEvents events
 
 	if (events & APP_PERIPHERAL_ONEMINUTE_EVENT)
 	{
-
+		/* 这个任务永不停止，所以systick放这里 */
+		sysinfo.sysTick++;
+		LogPrintf(DEBUG_ALL, "fsm:%d %x %x %x %x %x %x", sysinfo.runFsm, sysinfo.gpsRequest,sysinfo.alarmRequest, sysinfo.wifiExtendEvt,sysinfo.lbsRequest,sysinfo.netRequest , sysinfo.outBleFenceFlag);
+		movingStatusCheck();
+		wifiCheckByStep();
+		BleFenceCheck();
+		updateModuleStatus();
 		return events ^ APP_PERIPHERAL_ONEMINUTE_EVENT;
 	}
 	LogPrintf(DEBUG_ALL, "unknow event taskid:%d events:%d", taskID, events);
@@ -817,53 +820,65 @@ static void appBeaconInit(void)
 	设置1成功返回1，其余都是0
 **************************************************/
 
-uint8_t appBeaconSockflagSet(uint8_t ind, uint8_t set, char *sn)
+//uint8_t appBeaconSockflagSet(uint8_t set, char *sn)
+//{
+//	uint8_t i, cnt = 0;
+//	uint8_t ind;
+//	if (set)
+//	{
+//		for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+//		{
+//			if (beaconInfoList[i].sockFlag == 0) 
+//			{
+//				cnt++;
+//			}
+//			else
+//			{
+//				ind = i;
+//			}
+//		}
+//		/* 列表没有连接sock */
+//		if (cnt >= PERIPHERAL_MAX_CONNECTION)
+//		{
+//			LogPrintf(DEBUG_BLE, "111");
+//			beaconInfoList[ind].sockFlag = 1;
+//			//
+//			for (i = 0; i < 15; i++)
+//			{
+//				beaconInfoList[ind].mSn[i] = sn[i];
+//			}
+//			beaconInfoList[ind].mSn[15] = 0;
+//			return 1;
+//		}
+//		/* 说明有一个已经连上，判断主机是否匹配 */
+//		if (cnt != 0 && cnt < PERIPHERAL_MAX_CONNECTION &&
+//			strncmp(sn, beaconInfoList[ind].mSn, 15) == 0 &&
+//			beaconInfoList[ind].socksuccess)
+//		{
+//			
+//			LogPrintf(DEBUG_BLE, "222");
+//			return 1;
+//		}
+//		LogPrintf(DEBUG_BLE, "333");
+//		
+//		return 0;
+//	}
+//	else
+//	{
+//		LogPrintf(DEBUG_BLE, "444");
+//		beaconInfoList[ind].socksuccess = 0;
+//		tmos_memset(beaconInfoList[ind].mSn, 0, sizeof(beaconInfoList[ind].mSn));
+//		return 0;
+//	}
+//}
+
+uint8_t appBeaconSockflagSet(uint8_t set, uint8_t index)
 {
-	uint8_t i, cnt = 0;
-	if (set)
-	{
-		for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
-		{
-			if (beaconInfoList[i].socksuccess == 0) 
-			{
-				cnt++;
-			}
-		}
-		/* 列表没有连接sock */
-		if (cnt >= PERIPHERAL_MAX_CONNECTION)
-		{
-			LogPrintf(DEBUG_BLE, "111");
-			beaconInfoList[ind].socksuccess = 1;
-			//
-			for (i = 0; i < 15; i++)
-			{
-				beaconInfoList[ind].mSn[i] = sn[i];
-			}
-			beaconInfoList[ind].mSn[15] = 0;
-			return 1;
-		}
-		/* 说明有一个已经连上，判断主机是否匹配 */
-		if (cnt != 0 && cnt < PERIPHERAL_MAX_CONNECTION &&
-			strncmp(sn, beaconInfoList[ind].mSn, 15) == 0 &&
-			beaconInfoList[ind].socksuccess)
-		{
-			
-			LogPrintf(DEBUG_BLE, "222");
-			beaconInfoList[ind].socksuccess = 1;
-			return 1;
-		}
-		LogPrintf(DEBUG_BLE, "333");
-		
-		return 0;
-	}
-	else
-	{
-		LogPrintf(DEBUG_BLE, "444");
-		beaconInfoList[ind].socksuccess = 0;
-		tmos_memset(beaconInfoList[ind].mSn, 0, sizeof(beaconInfoList[ind].mSn));
-		return 0;
-	}
+	beaconInfoList[index].sockFlag = set;
+	LogPrintf(DEBUG_BLE, "appBeaconSockflagSet==>%s", set ? "set" : "clear");
 }
+
+
 /**************************************************
 @bref       查询蓝牙socksuccess状态
 @param
@@ -871,17 +886,17 @@ uint8_t appBeaconSockflagSet(uint8_t ind, uint8_t set, char *sn)
 @note	
 **************************************************/
 
-int8_t appBeaconGetSockSuccess(void)
-{
-	for (uint8_t i  = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
-	{
-		if (beaconInfoList[i].socksuccess)
-		{
-			return i;
-		}
-	}
-	return -1;
-}
+//int8_t appBeaconGetSockSuccess(void)
+//{
+//	for (uint8_t i  = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+//	{
+//		if (beaconInfoList[i].socksuccess)
+//		{
+//			return i;
+//		}
+//	}
+//	return -1;
+//}
 
 /**************************************************
 @bref       蓝牙信标信息录入
@@ -1122,28 +1137,25 @@ connectionInfoStruct *getBeaconInfoByHandle(uint16_t handle)
 	return NULL;
 }
 
+connectionInfoStruct *getBeaconInfoAll(void)
+{
+	return beaconInfoList;
+}
+
 /**************************************************
-@bref       查询设备是否在蓝牙网关内
+@bref       是否有蓝牙连接
 @param
 @return
 @note	1: 是
 		0：否
-判断是否连上蓝牙网关的条件：
-	1.sock标志（connSuccess）为1
-	2.3分钟内有协议通讯
 **************************************************/
 
-int isInsideBeaconFence(void)
+uint8_t isInsideBleFence(void)
 {
-	uint8_t i;
-	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+	for (uint8_t i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
 	{
-		if ((sysinfo.sysTick - beaconInfoList[i].updateTick) >= CONNTECT_TIMEOUT_MAXMIN &&
-			beaconInfoList[i].socksuccess)
+		if (beaconInfoList[i].connSuccess)
 		{
-			appBeaconSockflagSet(i, 0, NULL);
-		}
-		if (beaconInfoList[i].connSuccess) {
 			return 1;
 		}
 	}
@@ -1151,55 +1163,93 @@ int isInsideBeaconFence(void)
 }
 
 /**************************************************
+@bref       蓝牙网关断连超时
+@param
+@return
+@note	1: 是
+		0：否
+判断是否连上蓝牙网关的条件：
+	1.sock标志为1
+	2.3分钟内有协议通讯
+**************************************************/
+
+void bleGatewayDisconnDetect(void)
+{
+	uint8_t i;
+	for (i = 0; i < PERIPHERAL_MAX_CONNECTION; i++)
+	{
+		if ((sysinfo.sysTick - beaconInfoList[i].updateTick) >= CONNTECT_TIMEOUT_MAXMIN &&
+			beaconInfoList[i].sockFlag)
+		{
+			appBeaconSockflagSet(0, i);
+			sysinfo.sockSuccess = 0;
+			tmos_memset(sysinfo.masterSn, 0, sizeof(sysinfo.masterSn));
+		}		
+	}
+
+}
+
+/**
+ * 第一次开机在上报的时间内检测到蓝牙就进入蓝牙，没检测到蓝牙就继续上线
+ * 
+*/
+
+/**************************************************
 @bref       蓝牙围栏查询任务
 @param
 @return
 @note
+在蓝牙网关内：低功耗状态
+在普通蓝牙内：在网不联网
+在wifi内：每隔一段时间搜wifi
+离开wifi：开启网络
 **************************************************/
 
 void BleFenceCheck(void)
 {
 	static uint16_t Contick = 0;
 	static uint16_t disConTick = 0;
-	if (isInsideBeaconFence())
+	bleGatewayDisconnDetect();
+	/* 在蓝牙网关内 */
+	if (sysinfo.sockSuccess)
+	{
+		Contick    = 0;
+		disConTick = 0;
+		sysinfo.outBleFenceFlag = 0;
+		LogPrintf(DEBUG_ALL, "In ble gateway");
+	}
+	/* 在手机蓝牙内 */
+	else if (isInsideBleFence())
 	{
 		disConTick = 0;
-		if (Contick++ >= 10)
+		if (Contick++ >= 5)
 		{
 			if (sysinfo.outBleFenceFlag)
 			{
 				sysinfo.outBleFenceFlag = 0;
 				LogPrintf(DEBUG_BLE, "Dev enter ble fence");
 			}
-			if (netRequestGet(NET_REQUEST_WIFI_CTL | NET_REQUEST_OFFLINE))
-			{
-				resetSafeArea();
-				if (netRequestGet(NET_REQUEST_WIFI_CTL)) {
-					alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
-				}
-			}
 		}
-		return;
+		LogPrintf(DEBUG_ALL, "in ble fence, Contick:%d", Contick);
 	}
-	Contick = 0;
 //	if (sysinfo.outBleFenceFlag)
 //	{
 //		disConTick = 0;
 //		return;
 //	}
-	/*outBleFenceFlag标志由1到0就重新开始计时*/
-	if (disConTick++ >= 180)
+	/* outBleFenceFlag标志由1到0就重新开始计时 */
+	/* 无蓝牙 */
+	else 
 	{
-		if (sysinfo.outBleFenceFlag == 0)
+		Contick = 0;
+		LogPrintf(DEBUG_ALL, "out ble fence, disConTick:%d", disConTick);
+		if (disConTick++ >= 180)
 		{
-			sysinfo.outBleFenceFlag = 1;
-			LogPrintf(DEBUG_BLE, "Dev leave ble fence");
-			wifiRequestSet(DEV_EXTEND_OF_FENCE);
-			netRequestSet(NET_REQUEST_OFFLINE);
-			if (sysinfo.kernalRun == 0)
+			if (sysinfo.outBleFenceFlag == 0)
 			{
-				volCheckRequestSet();
-                tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+				sysinfo.outBleFenceFlag = 1;
+				LogPrintf(DEBUG_BLE, "Dev leave ble fence");
+				wifiRequestSet(DEV_EXTEND_OF_FENCE);				
 			}
 		}
 	}

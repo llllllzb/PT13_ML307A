@@ -48,6 +48,7 @@ void systemShutDownTimeout(void);
 void keyInit(void);
 void keyExcuteByStatus(void);
 void keyTask(void);
+void systemShutDownCallback(void);
 
 
 #endif /* APP_INCLUDE_APP_KEY_H_ */

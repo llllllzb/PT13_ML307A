@@ -68,6 +68,7 @@ typedef struct
     uint8_t jt808Wifi				: 1;
     uint8_t ephemerisFlag			: 1;
     uint8_t outBleFenceFlag			: 1;
+    uint8_t outWifiFenceFlag		: 1;
     uint8_t ttsPlayNow				: 1;
     uint8_t inWifiFlag				: 1;
     uint8_t petledOnoff				: 1;
@@ -121,7 +122,8 @@ typedef struct
 	uint8_t ldrIrqFlag				: 1;	/*LDR触发中断标志位*/
 	uint8_t ldrDarkCnt;	
 	
-
+	uint8_t safeAreaFlag			: 1;
+	uint8_t noNetFlag				: 1;
 	uint8_t irqTick;
 	uint16_t mode4NoNetTick;
 	uint16_t outWifiTick;
@@ -135,8 +137,9 @@ typedef struct
 	uint8_t wifiscanCnt;
 	uint8_t moduleFsm;
 	uint8_t outputLockTick;		//AT指令输出锁计时
-
-
+	uint16_t moduleWorkStatus;
+	uint8_t sockSuccess;
+	uint8_t masterSn[16];
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

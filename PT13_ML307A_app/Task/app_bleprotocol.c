@@ -169,7 +169,6 @@ void bleSendLoginInfo(uint16_t connhandle)
 {
 	uint8_t data[60] = { 0 }, dest[60] = { 0 };
 	uint8_t destlen = 0, i;
-	int8_t ind;
 	char debug[120] = { 0 };
 	
 	connectionInfoStruct *devinfo = NULL;
@@ -185,23 +184,21 @@ void bleSendLoginInfo(uint16_t connhandle)
 	{
 		data[destlen++] = dynamicParam.SN[i];
 	}
-	/* login success flag */
-	ind = appBeaconGetSockSuccess();
-	data[destlen++] = ind < 0 ? 0 : 1;
+	/* sock success flag */
+	data[destlen++] = sysinfo.sockSuccess;
 	/* 主机设备号 */
-	if (ind >= 0)
+	if (sysinfo.sockSuccess)
 	{
-		connectionInfoStruct *masterSN = getBeaconInfoByIndex(ind);
 		for (i = 0; i < 15; i++)
 		{
-			data[destlen++] = masterSN->mSn[i];
+			data[destlen++] = sysinfo.masterSn[i];
 		}
 	}
 	destlen = appPackProtocol(dest, CMD_GENERAL_RESPON, data, destlen);
 	appSendNotifyData(connhandle, dest, destlen);
 	byteToHexString(dest, debug, destlen);
 	debug[destlen * 2] = 0;
-	LogPrintf(DEBUG_BLE, "Send Login info(%d)[%d]:%s", ind, connhandle, debug);
+	LogPrintf(DEBUG_BLE, "Send Login info[%d]:%s", connhandle, debug);
 }
 
 void bleSendHbtInfo(uint16_t connhandle)
@@ -253,15 +250,88 @@ void bleMasterInfo(uint16_t connhandle, char *sn, uint8_t ind, uint8_t socksucce
 		return;
 	}
 	data[destlen++] = CMD_DEV_MASTER_INFO;
-	ret = appBeaconSockflagSet(getBeaconIdByHandle(connhandle), socksuccess, sn);
-	if (ret)
+
+	/* 录入主机信息 */
+//	if (socksuccess)
+//	{
+//		if (sysinfo.sockSuccess == 0)
+//		{
+//			for (uint8_t j = 0; j < 15; j++)
+//			{
+//				sysinfo.masterSn[j++] = sn[j++];
+//			}
+//			sysinfo.masterSn[15] = 0;
+//			sysinfo.sockSuccess = 1;
+//			ret = 1;
+//			LogPrintf(DEBUG_BLE, "MasterInfo==>master[%s] rigister ok", sysinfo.masterSn);
+//		}
+//		else
+//		{
+//			if (strncmp(sn, sysinfo.masterSn, 15) == 0)
+//			{
+//				ret = 1;
+//				sysinfo.sockSuccess = 1;
+//				LogPrintf(DEBUG_BLE, "MasterInfo==>Same mastersn[%s], rigister ok", sysinfo.masterSn);
+//			}
+//			else
+//			{
+//				ret = 0;
+//				LogPrintf(DEBUG_BLE, "MasterInfo==>Other link,master[%s]rigister fail", sysinfo.masterSn);
+//			}
+//		}
+//	}
+//	/*  */
+//	else
+//	{
+//		ret = 0;
+//		LogPrintf(DEBUG_BLE, "MasterInfo==>master[%s]rigister fail", sysinfo.masterSn);
+//	}
+
+	/* 已注册的主机拥有修改socksuccess权 */
+	if (strncmp(sn, sysinfo.masterSn, 15) == 0)
+	{
+		ret = 1;
+		sysinfo.sockSuccess = socksuccess;
+		LogPrintf(DEBUG_BLE, "MasterInfo==>Same mastersn[%s %s], rigister ok", sysinfo.masterSn);
+		appBeaconSockflagSet(socksuccess, ind);
+	}
+	/* 非自己主机只能注册，不能注销socksuccess */
+	else
+	{
+		if (sysinfo.sockSuccess == 0)
+		{
+			if (socksuccess)
+			{
+				sysinfo.sockSuccess = 1;
+				for (uint8_t j = 0; j < 15; j++)
+				{
+					sysinfo.masterSn[j] = sn[j];
+				}
+				sysinfo.masterSn[15] = 0;
+				LogPrintf(DEBUG_BLE, "MasterInfo==>master[%s] rigister ok", sysinfo.masterSn);
+				ret = 1;
+				appBeaconSockflagSet(socksuccess, ind);
+			}
+			else
+			{
+				LogPrintf(DEBUG_BLE, "MasterInfo==>master[%s]can not link,rigister fail", sysinfo.masterSn);
+				ret = 0;
+				appBeaconSockflagSet(0, ind);
+			}
+		}
+		else if (sysinfo.sockSuccess)
+		{
+			LogPrintf(DEBUG_BLE, "MasterInfo==>master[%s]other link,rigister fail", sysinfo.masterSn);
+			ret = 0;
+			appBeaconSockflagSet(0, ind);
+		}
+	}
+
+	
+	if (sysinfo.sockSuccess)
 	{
 		/* 回归安全围栏,如果还有别的类型的请求,gps wifi等请求,这里可能会影响 */
 		resetSafeArea();
-	}
-	else
-	{
-		
 	}
 	data[destlen++] = ret;
 	destlen = appPackProtocol(dest, CMD_GENERAL_RESPON, data, destlen);

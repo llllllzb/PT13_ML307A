@@ -27,7 +27,7 @@
 #define WIFI_ADDRESS		0X7400
 
 #define DB_FLAG				0xAB
-#define GPS_DB_SIZE			600
+#define GPS_DB_SIZE			512
 
 #define BLOCK_SIZE		256
 

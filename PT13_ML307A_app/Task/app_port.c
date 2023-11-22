@@ -2,7 +2,7 @@
 
 #include "CH583SFR.h"
 #include "SLEEP.h"
-
+#include "RTC.h"
 #include "app_kernal.h"
 #include "app_mir3da.h"
 #include "app_param.h"
@@ -565,6 +565,8 @@ void GPIOB_IRQHandler(void)
     }
     if (iqr & SYS_PWROFF_PIN)
     {
+    	GPIOB_ClearITFlagBit(SYS_PWROFF_PIN);
+    	GPIOTigFlag = 1;
 		if (GPIOB_ReadPortPin(SYS_PWROFF_PIN)) 
 		{
         	GPIOB_ResetBits(SYS_PWROFF_PIN);
@@ -598,6 +600,15 @@ void portGpioWakeupIRQHandler(void)
 		}
 		sysinfo.doMotionFlag = 0;
 		
+	}
+	if (GPIOTigFlag)
+	{
+		if (sysinfo.kernalRun == 0)
+		{
+			wakeUpByInt(2, 10);
+			tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+		}
+		GPIOTigFlag = 0;
 	}
 }
 
@@ -706,10 +717,10 @@ void portSyspwkGpioCfg(void)
  */
 void portSyspwkOffGpioCfg(void)
 {
-	portUartCfg(APPUSART2, 0, 115200, NULL);
-	PWR_PeriphWakeUpCfg( ENABLE, RB_SLP_GPIO_WAKE, Long_Delay );
-    GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_PU);
-    GPIOB_ITModeCfg(SYS_PWROFF_PIN, GPIO_ITMode_FallEdge);
+//	portUartCfg(APPUSART2, 0, 115200, NULL);
+//	PWR_PeriphWakeUpCfg( ENABLE, RB_SLP_GPIO_WAKE, Long_Delay );
+//    GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_Floating);
+//    GPIOB_ITModeCfg(SYS_PWROFF_PIN, GPIO_ITMode_FallEdge);
 //	if (GPIOB_ReadPortPin(SYS_PWROFF_PIN)) 
 //	{
 //    	GPIOB_ResetBits(SYS_PWROFF_PIN);
@@ -718,7 +729,7 @@ void portSyspwkOffGpioCfg(void)
 //    {
 //        GPIOB_SetBits(SYS_PWROFF_PIN);
 //    }
-    PFIC_EnableIRQ(GPIO_B_IRQn);
+//    PFIC_EnableIRQ(GPIO_B_IRQn);
 }
 
 
@@ -742,6 +753,7 @@ void portGpioSetDefCfg(void)
 void portSysReset(void)
 {
     LogMessage(DEBUG_ALL, "system reset");
+    portSaveStep();
     dbSaveRelease();
     saveGpsHistory();
     SYS_ResetExecute();
@@ -1012,20 +1024,23 @@ void portGsensorCtl(uint8_t onoff)
         sysinfo.alreadystep = 0;
 		sysinfo.runningstep = 0;
         GSPWR_ON;
-		mir3da_init_pedometer();
+		mir3da_init();
+		mir3da_set_enable(1);
 		mir3da_open_interrupt(10);
-		PWR_PeriphWakeUpCfg( ENABLE, RB_SLP_GPIO_WAKE, Long_Delay );
-        GPIOB_ModeCfg(GSINT_PIN, GPIO_ModeIN_Floating);
-        GPIOB_ITModeCfg(GSINT_PIN, GPIO_ITMode_RiseEdge);
-        if (GPIOB_ReadPortPin(GSINT_PIN)) 
-		{
-        	GPIOB_ResetBits(GSINT_PIN);
-	    }
-	    else
-	    {
-	        GPIOB_SetBits(GSINT_PIN);
-	    }
-        PFIC_EnableIRQ(GPIO_B_IRQn);
+		startStep();
+		
+//		PWR_PeriphWakeUpCfg( ENABLE, RB_SLP_GPIO_WAKE, Long_Delay );
+//        GPIOB_ModeCfg(GSINT_PIN, GPIO_ModeIN_Floating);
+//        GPIOB_ITModeCfg(GSINT_PIN, GPIO_ITMode_RiseEdge);
+//        if (GPIOB_ReadPortPin(GSINT_PIN)) 
+//		{
+//        	GPIOB_ResetBits(GSINT_PIN);
+//	    }
+//	    else
+//	    {
+//	        GPIOB_SetBits(GSINT_PIN);
+//	    }
+//        PFIC_EnableIRQ(GPIO_B_IRQn);
         motionClear();
     }
     else
@@ -1628,6 +1643,7 @@ void portWdtFeed(void)
 {
     WWDG_SetCounter(0);
 }
+
 /**
  * @brief   πÿ±’ø¥√≈π∑
  * @param

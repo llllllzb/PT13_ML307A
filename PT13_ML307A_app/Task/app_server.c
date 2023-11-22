@@ -17,7 +17,7 @@
 #include "app_task.h"
 #include "app_central.h"
 
-static netConnectInfo_s privateServConn, bleServConn, hiddenServConn;
+static netConnectInfo_s privateServConn, hiddenServConn;
 static jt808_Connect_s jt808ServConn;
 static agps_connect_s agpsServConn;
 static bleInfo_s *bleHead = NULL;
@@ -66,25 +66,19 @@ void hbtRspSuccess(void)
 void moduleRspTimeout(void)
 {
     timeOutId = -1;
-    /* 如果已经关机了就不要复位了 */
-    if (isModulePowerOff())
-    	return;
-    moduleReset();
+	if (sysinfo.runFsm == MODE_RUNING)
+	{
+   	  moduleReset();
+   	  LogMessage(DEBUG_ALL, "moduleRspTimeout");
+   	}
 }
 
 static void hbtRspTimeOut(void)
 {
     LogMessage(DEBUG_ALL, "heartbeat timeout");
     hbtTimeOutId = -1;
-    if (sysparam.protocol == ZT_PROTOCOL_TYPE)
-    {
-        socketDel(NORMAL_LINK);
-    }
-    else
-    {
-        socketDel(JT808_LINK);
-    }
-    moduleSleepCtl(0);
+	if (sysinfo.runFsm == MODE_RUNING)
+		moduleReset();
 }
 
 
@@ -300,10 +294,6 @@ void privateServerConnTask(void)
             if (privateServConn.heartbeattick % sysparam.heartbeatgap == 0)
             {
                 privateServConn.heartbeattick = 0;
-                if (timeOutId == -1)
-                {
-                    timeOutId = startTimer(120, moduleRspTimeout, 0);
-                }
                 if (hbtTimeOutId == -1)
                 {
                     hbtTimeOutId = startTimer(1800, hbtRspTimeOut, 0);
@@ -311,10 +301,6 @@ void privateServerConnTask(void)
                 protocolInfoResiter(getBatteryLevel(), sysinfo.outsidevoltage > 5.0 ? sysinfo.outsidevoltage : sysinfo.insidevoltage,
                                     dynamicParam.startUpCnt, dynamicParam.runTime);
                 protocolSend(NORMAL_LINK, PROTOCOL_13, NULL);
-                if (netRequestGet(NET_REQUEST_CONNECT_ONE))
-                {
-					netRequestClear(NET_REQUEST_CONNECT_ONE);
-                }
                 uploadflag = 1;
                 sysinfo.hbtFlag = 1;
             }
@@ -732,11 +718,6 @@ void jt808ServerConnTask(void)
                 queryBatVoltage();
                 LogMessage(DEBUG_ALL, "Terminal heartbeat");
                 jt808SendToServer(TERMINAL_HEARTBEAT, NULL);
-//                if (timeOutId == -1)
-//                {
-//                    timeOutId = startTimer(80, moduleRspTimeout, 0);
-//                }
-
                 if (hbtTimeOutId == -1)
                 {
                     hbtTimeOutId = startTimer(1800, hbtRspTimeOut, 0);
@@ -798,203 +779,6 @@ void jt808ServerConnTask(void)
             break;
     }
     jt808ServConn.runTick++;
-}
-
-/**************************************************
-@bref		添加待登录的从设备信息
-@param
-@return
-@note
-	SN:999913436051195,292,3.77,46
-**************************************************/
-
-void bleServerAddInfo(bleInfo_s dev)
-{
-    bleInfo_s *next;
-    if (bleHead == NULL)
-    {
-        bleHead = malloc(sizeof(bleInfo_s));
-        if (bleHead != NULL)
-        {
-            strncpy(bleHead->imei, dev.imei, 15);
-            bleHead->imei[15] = 0;
-            bleHead->startCnt = dev.startCnt;
-            bleHead->vol = dev.vol;
-            bleHead->batLevel = dev.batLevel;
-            bleHead->next = NULL;
-        }
-        return;
-    }
-    next = bleHead;
-    while (next != NULL)
-    {
-        if (next->next == NULL)
-        {
-            next->next = malloc(sizeof(bleInfo_s));
-            if (next->next != NULL)
-            {
-                next = next->next;
-
-                strncpy(next->imei, dev.imei, 15);
-                next->imei[15] = 0;
-                next->startCnt = dev.startCnt;
-                next->vol = dev.vol;
-                next->batLevel = dev.batLevel;
-                next->next = NULL;
-                next = next->next;
-            }
-            else
-            {
-                break;
-            }
-        }
-        else
-        {
-            next = next->next;
-        }
-    }
-}
-/**************************************************
-@bref		显示待连接队列
-@param
-@return
-@note
-**************************************************/
-
-void showBleList(void)
-{
-    uint8_t cnt;
-    bleInfo_s *dev;
-    dev = bleHead;
-    cnt = 0;
-    while (dev != NULL)
-    {
-        LogPrintf(DEBUG_ALL, "Dev[%d]:%s", ++cnt, dev->imei);
-        dev = dev->next;
-    }
-}
-
-/**************************************************
-@bref		蓝牙待连接链路登录成
-@param
-@return
-@note
-**************************************************/
-
-void bleSerLoginReady(void)
-{
-    bleServConn.fsmstate = SERV_READY;
-    bleServConn.heartbeattick = 0;
-}
-/**************************************************
-@bref		socket数据接收
-@param
-@return
-@note
-**************************************************/
-
-static void bleServerSocketRecv(char *data, uint16_t len)
-{
-    protocolRxParser(BLE_LINK, data, len);
-}
-
-/**************************************************
-@bref		蓝牙链接服务器任务
-@param
-@return
-@note
-**************************************************/
-
-void bleServerConnTask(void)
-{
-    static uint8_t tick = 0;
-    bleInfo_s *next;
-    gpsinfo_s *gpsinfo;
-    if (isModuleRunNormal() == 0 || bleHead == NULL)
-    {
-        if (gpsRequestGet(GPS_REQUEST_BLE))
-        {
-            gpsRequestClear(GPS_REQUEST_BLE);
-        }
-        return ;
-    }
-    if (socketGetUsedFlag(BLE_LINK) != 1)
-    {
-        bleServConn.loginCount = 0;
-        bleServConn.fsmstate = SERV_LOGIN;
-        socketAdd(BLE_LINK, sysparam.bleServer, sysparam.bleServerPort, bleServerSocketRecv);
-        return;
-    }
-    if (socketGetConnStatus(BLE_LINK) != SOCKET_CONN_SUCCESS)
-    {
-        return;
-    }
-
-    switch (bleServConn.fsmstate)
-    {
-        case SERV_LOGIN:
-            tick = 0;
-            LogMessage(DEBUG_ALL, "ble try login...");
-            gpsRequestSet(GPS_REQUEST_BLE);
-            protocolSnRegister(bleHead->imei);
-            protocolSend(BLE_LINK, PROTOCOL_01, NULL);
-            bleServConn.fsmstate = SERV_LOGIN_WAIT;
-            bleServConn.logintick = 0;
-            break;
-        case SERV_LOGIN_WAIT:
-            bleServConn.logintick++;
-            if (bleServConn.logintick >= 30)
-            {
-                bleServConn.fsmstate = SERV_LOGIN;
-                bleServConn.loginCount++;
-                if (bleServConn.loginCount >= 2)
-                {
-                    bleServConn.fsmstate = SERV_END;
-                }
-            }
-            break;
-        case SERV_READY:
-            if (bleServConn.heartbeattick++ == 0)
-            {
-                protocolInfoResiter(getBatteryLevel(), sysinfo.outsidevoltage, bleHead->startCnt, 0);
-                protocolSend(BLE_LINK, PROTOCOL_13, NULL);
-                lbsRequestSet(DEV_EXTEND_OF_BLE);
-                wifiRequestSet(DEV_EXTEND_OF_BLE);
-            }
-            gpsinfo = getCurrentGPSInfo();
-
-            if (gpsinfo->fixstatus)
-            {
-                if (tick++ >= 10)
-                {
-                    protocolSend(BLE_LINK, PROTOCOL_12, gpsinfo);
-                    bleServConn.fsmstate = SERV_END;
-                    break;
-                }
-            }
-            else
-            {
-                tick = 0;
-            }
-            if (bleServConn.heartbeattick >= 180)
-            {
-                protocolSend(BLE_LINK, PROTOCOL_12, getLastFixedGPSInfo());
-                bleServConn.fsmstate = SERV_END;
-            }
-            break;
-        case SERV_END:
-            next = bleHead->next;
-            free(bleHead);
-            bleHead = next;
-            socketDel(BLE_LINK);
-            bleServConn.fsmstate = SERV_LOGIN;
-            LogPrintf(DEBUG_ALL, "ble server done");
-            break;
-        default:
-            bleServConn.fsmstate = SERV_LOGIN;
-            bleServConn.heartbeattick = 0;
-            break;
-    }
 }
 
 /**************************************************
@@ -1140,7 +924,6 @@ void serverManageTask(void)
         privateServerConnTask();
     }
 
-    //bleServerConnTask();
     hiddenServerConnTask();
     agpsServerConnTask();
 }

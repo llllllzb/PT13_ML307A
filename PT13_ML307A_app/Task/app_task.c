@@ -652,6 +652,10 @@ static void gpsUplodOnePointTask(void)
             runtick = 0;
             uploadtick = 0;
             gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+            if (netRequestGet(NET_REQUEST_CONNECT_ONE))
+            {
+				netRequestClear(NET_REQUEST_CONNECT_ONE);
+            }
         }
         return;
     }
@@ -670,6 +674,11 @@ static void gpsUplodOnePointTask(void)
         protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
         jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
         gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+		if (netRequestGet(NET_REQUEST_CONNECT_ONE))
+		{
+			netRequestClear(NET_REQUEST_CONNECT_ONE);
+		}
+
     }
 
 }
@@ -684,6 +693,7 @@ void alarmRequestSet(uint16_t request)
 {
     LogPrintf(DEBUG_ALL, "alarmRequestSet==>0x%04X", request);
     sysinfo.alarmRequest |= request;
+    netRequestSet(NET_REQUEST_ALARM_ONE);
 }
 /**************************************************
 @bref		清除报警上送
@@ -708,9 +718,24 @@ void alarmRequestClear(uint16_t request)
 void alarmRequestTask(void)
 {
     uint8_t alarm;
+    static uint8_t tick = 0;
     if (primaryServerIsReady() == 0 || sysinfo.alarmRequest == 0)
     {
+    	tick = 0;
+    	if (sysinfo.alarmRequest == 0)
+    	{
+			netRequestClear(NET_REQUEST_ALARM_ONE);
+    	}
         return;
+    }
+    if (sysinfo.alarmRequest != 0)
+    {
+		if (tick++ >= 180)
+		{
+			sysinfo.alarmRequest = 0;
+			netRequestClear(NET_REQUEST_ALARM_ONE);
+			tick = 0;
+		}
     }
     if (getTcpNack() != 0)
     {
@@ -768,8 +793,7 @@ void alarmRequestTask(void)
     if (sysinfo.alarmRequest & ALARM_DECELERATE_REQUEST)
     {
         alarmRequestClear(ALARM_DECELERATE_REQUEST);
-        LogMessage(DEBUG_ALL,
-                   "alarmRequestTask==>Rapid Deceleration Alarm");
+        LogMessage(DEBUG_ALL, "alarmRequestTask==>Rapid Deceleration Alarm");
         alarm = 10;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
@@ -1175,13 +1199,13 @@ void movingStatusCheck(void)
 	if (flag == 0)
 	{
 		flag = 1;
-		last = getStep();
+		last = portUpdateStep();
 	}
 	//LogPrintf(DEBUG_ALL, "last:%d now:%d", last, now);
 	if (dettick++ >= 10)
 	{
 		dettick = 0;
-		now = getStep();
+		now = portUpdateStep();
 		if (ABS(now - last) >= 5)
 		{
 			motionStateUpdate(GSENSOR_SRC, MOTION_MOVING);
@@ -1318,9 +1342,9 @@ static void changeModeFsm(uint8_t fsm)
 static void modeShutDownQuickly(void)
 {
     static uint16_t delaytick = 0;
-    LogPrintf(DEBUG_ALL, "%x %x %x %x %x %x", sysinfo.gpsRequest,sysinfo.alarmRequest, sysinfo.wifiRequest,sysinfo.lbsRequest,sysinfo.netRequest , sysinfo.outBleFenceFlag);
+    
     if (sysinfo.gpsRequest == 0 && sysinfo.alarmRequest    == 0 \
-    							&& sysinfo.wifiRequest     == 0 \
+    							&& sysinfo.wifiExtendEvt   == 0 \
     							&& sysinfo.lbsRequest      == 0 \
     							&& sysinfo.netRequest      == 0 )
     {
@@ -1792,18 +1816,9 @@ static void modeStart(void)
         /*离线模式*/
         case MODE4:
 			portGsensorCtl(1);
-		    //modulePowerOn();
 		    netResetCsqSearch();
-		    portSetNextAlarmTime();
-		    if (sysinfo.mode4First == 0)
-		    {
-				sysinfo.mode4First = 1;
-				lbsRequestSet(DEV_EXTEND_OF_MY);
-		    	gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-		    	netRequestSet(NET_REQUEST_CONNECT_ONE);
-		    }
 		    changeModeFsm(MODE_RUNING);
-        	return;
+        	break;
         default:
             sysparam.MODE = MODE2;
             paramSaveAll();
@@ -1813,11 +1828,8 @@ static void modeStart(void)
     LogPrintf(DEBUG_ALL, "Mode:%d, startup:%d debug:%d %d", sysparam.MODE, dynamicParam.startUpCnt, sysparam.debug, dynamicParam.debug);
     lbsRequestSet(DEV_EXTEND_OF_MY);
     gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-    if (isModulePowerOff())
-    {
-    	modulePowerOn();
-   	}
     netResetCsqSearch();
+    ledStatusUpdate(SYSTEM_LED_RUN, 1);
     changeModeFsm(MODE_RUNING);
 }
 
@@ -1832,11 +1844,16 @@ static void sysRunTimeCnt(void)
     }
 }
 
-static void gpsUploadByStep(void)
+void wifiCheckByStep(void)
 {
 	static uint8_t flag = 0;
 	if (sysinfo.gsensorOnoff == 0)
 		return;
+	if (sysinfo.outBleFenceFlag == 0)
+	{
+		flag = 0;
+		return;
+	}
 	if (sysparam.wifiCheckGapStep_out == 0 && sysparam.wifiCheckGapStep_in == 0)
 	{
 		sysinfo.alreadystep = 0;
@@ -1846,14 +1863,14 @@ static void gpsUploadByStep(void)
 	}
 	if (flag == 0)
 	{
-		sysinfo.alreadystep = getStep();
+		sysinfo.alreadystep = portUpdateStep();
 		flag = 1;
 		sysinfo.runningstep = 0;
 		LogPrintf(DEBUG_ALL, "Update already step:%d", sysinfo.alreadystep);
 	}
-	sysinfo.runningstep = getStep(); 
+	sysinfo.runningstep = portUpdateStep(); 
 
-	if (abs(sysinfo.runningstep - sysinfo.alreadystep) >= sysparam.wifiCheckGapStep_out && netRequestGet(NET_REQUEST_WIFI_CTL) && sysparam.wifiCheckGapStep_out != 0)
+	if (abs(sysinfo.runningstep - sysinfo.alreadystep) >= sysparam.wifiCheckGapStep_out && sysinfo.outWifiFenceFlag && sysparam.wifiCheckGapStep_out != 0)
 	{
 		flag = 0;
 		/* 刷新一下搜WIFI时间 */
@@ -1862,8 +1879,9 @@ static void gpsUploadByStep(void)
 		LogPrintf(DEBUG_ALL, "[OUT]Reach the target number of steps==>%d", sysinfo.runningstep);
 		//gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
 		wifiRequestSet(DEV_EXTEND_OF_FENCE);
+		
 	}
-	else if (abs(sysinfo.runningstep - sysinfo.alreadystep) >= sysparam.wifiCheckGapStep_in && netRequestGet(NET_REQUEST_WIFI_CTL) == 0 && sysparam.wifiCheckGapStep_in != 0)
+	else if (abs(sysinfo.runningstep - sysinfo.alreadystep) >= sysparam.wifiCheckGapStep_in && sysinfo.outWifiFenceFlag == 0 && sysparam.wifiCheckGapStep_in != 0)
 	{
 		flag = 0;
 		/* 刷新一下搜WIFI时间 */
@@ -1871,6 +1889,7 @@ static void gpsUploadByStep(void)
 		sysinfo.inWifiTick = 0;
 		LogPrintf(DEBUG_ALL, "[IN]Reach the target number of steps==>%d", sysinfo.runningstep);
 		wifiRequestSet(DEV_EXTEND_OF_FENCE);
+		
 	}
 }
 
@@ -1898,8 +1917,6 @@ static void modeRun(void)
             break;
         case MODE2:
             //该模式下每隔3分钟记录时长
-            movingStatusCheck();
-            gpsUploadByStep();
             sysRunTimeCnt();
             gpsUploadPointToServer();
             break;
@@ -1911,10 +1928,8 @@ static void modeRun(void)
             gpsUploadPointToServer();
             break;
         case MODE4:
-        	movingStatusCheck();
-			gpsUploadByStep();
 			sysRunTimeCnt();
-			mode4NetRequestTask();
+			modeShutDownQuickly();
         	break;
         default:
             LogMessage(DEBUG_ALL, "mode change unknow");
@@ -1937,7 +1952,7 @@ static void modeStop(void)
         portGsensorCtl(0);
     }
     ledStatusUpdate(SYSTEM_LED_RUN, 0);
-    modulePowerOff();
+    //modulePowerOff();
     changeModeFsm(MODE_DONE);
 }
 
@@ -1954,7 +1969,7 @@ static void modeDone(void)
 	static uint8_t motionTick = 0;
 
 	bleTryInit();
-    if (sysinfo.gpsRequest)
+    if (sysinfo.gpsRequest || sysinfo.netRequest)
     {
         motionTick = 0;
         volCheckRequestSet();
@@ -2063,6 +2078,7 @@ static void sysAutoReq(void)
             if (sysinfo.kernalRun == 0)
             {
             	volCheckRequestSet();
+            	LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
                 tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
             }
         }
@@ -2080,12 +2096,14 @@ static void sysAutoReq(void)
                 if (sysinfo.kernalRun == 0)
                 {
                     volCheckRequestSet();
+                    LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
                     tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+                    changeModeFsm(MODE_START);
                 }
             }
         }
         
-		if (isModeDone())
+		if (sysinfo.noNetFlag)
 		{
 			/*mode4 没网的工作逻辑*/
 			sysinfo.mode4NoNetTick++;
@@ -2093,10 +2111,12 @@ static void sysAutoReq(void)
 			if (sysinfo.mode4NoNetTick >= 60)
 			{
 				sysinfo.mode4NoNetTick = 0;
+				sysinfo.noNetFlag = 0;
                 LogMessage(DEBUG_ALL, "mode 4 restoration network");
                 if (sysinfo.kernalRun == 0)
                 {
                 	volCheckRequestSet();
+                	LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
                     tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
                     changeModeFsm(MODE_START);
                 }
@@ -2107,7 +2127,7 @@ static void sysAutoReq(void)
 		{
 			sysinfo.mode4NoNetTick = 0;
 			/*没出WIFI围栏且离开蓝牙围栏*/
-			if (netRequestGet(NET_REQUEST_WIFI_CTL) == 0 && sysinfo.outBleFenceFlag)
+			if (sysinfo.outWifiFenceFlag == 0 && sysinfo.outBleFenceFlag)
 			{
 				sysinfo.outWifiTick = 0;
 				if (++sysinfo.inWifiTick >= sysparam.wifiCheckGapMin_in)
@@ -2116,12 +2136,12 @@ static void sysAutoReq(void)
 					LogMessage(DEBUG_ALL, "[IN]Wifi period");
 					wifiRequestSet(DEV_EXTEND_OF_FENCE);
 					/* 刷新一下搜WIFI步数 */
-					 sysinfo.alreadystep = getStep();
-					 sysinfo.runningstep = getStep();
+					 sysinfo.alreadystep = portUpdateStep();
+					 sysinfo.runningstep = portUpdateStep();
 				}
 			}
 			/*已经WIFI出围栏，上线，不受蓝牙围栏限制*/
-			if (netRequestGet(NET_REQUEST_WIFI_CTL))
+			if (sysinfo.outWifiFenceFlag)
 			{
 				sysinfo.inWifiTick = 0;
 				if (++sysinfo.outWifiTick >= sysparam.wifiCheckGapMin_out)
@@ -2130,8 +2150,8 @@ static void sysAutoReq(void)
 					LogMessage(DEBUG_ALL, "[OUT]Wifi out period");
 					wifiRequestSet(DEV_EXTEND_OF_FENCE);
 					/* 刷新一下WIFI步数 */
-					sysinfo.alreadystep = getStep();
-					sysinfo.runningstep = getStep();
+					sysinfo.alreadystep = portUpdateStep();
+					sysinfo.runningstep = portUpdateStep();
 				}
 			}
 		}
@@ -2149,6 +2169,7 @@ static void sysAutoReq(void)
                 if (sysinfo.kernalRun == 0)
                 {
                 	volCheckRequestSet();
+                	LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
                     tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
                 }
             }
@@ -2357,10 +2378,13 @@ static int8_t wifiTimeOutId = -1;
 
 void wifiTimeout(void)
 {
-	LogMessage(DEBUG_ALL, "wifiTimeout, try it again");
-	moduleGetWifiScan();
+	LogMessage(DEBUG_ALL, "wifiTimeout");
+	sysinfo.wifiExtendEvt = 0;
 	sysinfo.wifiscanCnt++;
 	wifiTimeOutId = -1;
+	netRequestClear(NET_REQUEST_WIFI_CTL);
+	if (sysinfo.runFsm == MODE_RUNING)
+		moduleReset();
 }
 
 /**************************************************
@@ -2378,6 +2402,7 @@ void wifiRspSuccess(void)
 		stopTimer(wifiTimeOutId);
 		wifiTimeOutId = -1;
 	}
+	netRequestClear(NET_REQUEST_WIFI_CTL);
 }
 
 /**************************************************
@@ -2395,6 +2420,7 @@ void wifiRequestSet(uint8_t ext)
     if (ext & DEV_EXTEND_OF_FENCE)
     {
 		sysinfo.wifiscanCnt = 0;
+		netRequestSet(NET_REQUEST_WIFI_CTL);
     }
 }
 
@@ -2434,14 +2460,20 @@ uint8_t wifiRequestGet(uint8_t ext)
 
 static void wifiRequestTask(void)
 {
+	if (isModulePowerOff())
+	{
+		return;
+	}
     if (sysinfo.wifiRequest == 0)
     {
         return;
     }
+    LogPrintf(DEBUG_ALL, "222");
     if (primaryServerIsReady() == 0 && wifiRequestGet(DEV_EXTEND_OF_FENCE) == 0)
     {
         return;
     }
+    LogPrintf(DEBUG_ALL, "111");
     /* 搜wifi围栏的时候, 需要模组驻网成功 */
     if (wifiRequestGet(DEV_EXTEND_OF_FENCE) && isModuleOfflineStatus() == 0 && isModuleRunNormal() == 0)
     {
@@ -2449,7 +2481,7 @@ static void wifiRequestTask(void)
    	}
     sysinfo.wifiRequest = 0;
     startTimer(30, moduleGetWifiScan, 0);
-    wifiTimeOutId = startTimer(300, wifiTimeout, 0);
+    wifiTimeOutId = startTimer(350, wifiTimeout, 0);
 }
 
 /**************************************************
@@ -2458,7 +2490,7 @@ static void wifiRequestTask(void)
 @return
 @note
 **************************************************/
-void wakeUpByInt(uint8_t     type, uint8_t sec)
+void wakeUpByInt(uint8_t      type, uint8_t sec)
 {
     switch (type)
     {
@@ -2466,7 +2498,8 @@ void wakeUpByInt(uint8_t     type, uint8_t sec)
             sysinfo.ringWakeUpTick = sec;
             break;
         case 1:
-            sysinfo.cmdTick = sec;
+        	if (sec >= sysinfo.cmdTick)
+            	sysinfo.cmdTick = sec;
             break;
         case 2:
         	sysinfo.irqTick = sec;
@@ -2581,7 +2614,7 @@ void autoSleepTask(void)
 
 static void rebootEveryDay(void)
 {
-    sysinfo.sysTick++;
+    
     //    if (sysinfo.sysTick < 86400)
     //        return ;
     //    if (sysinfo.gpsRequest != 0)
@@ -2786,6 +2819,7 @@ void systemCloseTask(void)
 	if (tick++ >= 20)
 	{
 		portSyspwkOffGpioCfg();
+		tick = 0;
 	}
 }
 
@@ -2833,11 +2867,12 @@ void resetSafeArea(void)
 	sysinfo.mode123Min = 0;		// 退出123模式
 	sysinfo.flag123 = 0;
 	sysinfo.outBleFenceFlag = 0;
+	sysinfo.outWifiFenceFlag = 0;
 	LogMessage(DEBUG_ALL, "resetSafeArea==>OK");
 
 	/* 重新计时 */
-	sysinfo.alreadystep = getStep();
-	sysinfo.runningstep = getStep();
+	sysinfo.alreadystep = portUpdateStep();
+	sysinfo.runningstep = portUpdateStep();
 	sysinfo.outWifiTick = 0;
 	sysinfo.inWifiTick  = 0;
 }
@@ -2905,6 +2940,181 @@ void resetSafeArea(void)
 //			break;
 //	}
 //}
+/**************************************************
+@bref		网络请求设置
+@param
+@return
+@note
+**************************************************/
+
+void netRequestSet(uint32_t req)
+{
+	sysinfo.netRequest |= req;
+	LogPrintf(DEBUG_ALL, "netRequestSet==>0x%04x", req);
+	if (sysinfo.kernalRun == 0)
+	{
+		volCheckRequestSet();
+		LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
+		tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+		changeModeFsm(MODE_START);
+	}
+}
+
+/**************************************************
+@bref		网络请求清除
+@param
+@return
+@note
+**************************************************/
+
+void netRequestClear(uint32_t req)
+{
+	sysinfo.netRequest &= ~req;
+	LogPrintf(DEBUG_ALL, "netRequestClear==>0x%04x", req);
+}
+
+/**************************************************
+@bref		网络请求获取
+@param
+@return
+@note
+**************************************************/
+
+uint8_t netRequestGet(uint32_t req)
+{
+	return (sysinfo.netRequest & req);
+}
+
+/**************************************************
+@bref		获取除了req以外的开模组请求
+@param
+@return
+@note
+**************************************************/
+
+uint8_t netRequestOtherGet(uint32_t req)
+{
+	uint32_t request;
+	request = sysinfo.netRequest;
+	request &= ~req;
+	LogPrintf(DEBUG_ALL, "netRequestOtherGet==>0x%04x", request & NET_REQUEST_ALL);
+	return (request & NET_REQUEST_ALL);
+}
+
+/**************************************************
+@bref		更新模组工作状态
+@param
+@return
+@note
+sysinfo.outBleFenceFlag优先级高于sysinfo.outWifiFenceFlag
+
+**************************************************/
+
+void updateModuleStatus(void)
+{
+	/* 出蓝牙 */
+	if (sysinfo.outBleFenceFlag)
+	{	
+		/* 且出WIFI */
+		if (sysinfo.outWifiFenceFlag)
+		{
+			if (sysinfo.safeAreaFlag)
+			{
+				alarmRequestSet(ALARM_LEAVESAFEAREA_REQUEST);
+				sysinfo.safeAreaFlag = 0;
+			}
+			netRequestClear(NET_REQUEST_OFFLINE);
+			netRequestSet(NET_REQUEST_KEEPNET_CTL);
+			
+		}
+		/* 没出WIFI */
+		else
+		{
+			netRequestClear(NET_REQUEST_KEEPNET_CTL);
+			netRequestSet(NET_REQUEST_OFFLINE);
+		}
+	}
+	/* 进蓝牙 */
+	else
+	{
+		if (sysinfo.safeAreaFlag == 0)
+		{
+			alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
+			sysinfo.safeAreaFlag = 1;
+		}
+		netRequestClear(NET_REQUEST_KEEPNET_CTL);
+		netRequestClear(NET_REQUEST_OFFLINE);
+	}
+	
+	//没网的话这里会让设备反复起来
+	if ((netRequestGet(NET_REQUEST_OFFLINE) || netRequestGet(NET_REQUEST_KEEPNET_CTL)) && sysinfo.noNetFlag == 0)
+	{
+		if (sysinfo.kernalRun == 0)
+		{
+			volCheckRequestSet();
+			changeModeFsm(MODE_START);
+            tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+		}
+	}
+}
+
+/**************************************************
+@bref		模组管理
+@param
+@return
+@note
+ 开模组再开灯和ADC，关模组就关灯ADC，因为开灯功耗比较大
+**************************************************/
+
+void netRequestTask(void)
+{
+	static uint8_t runtick = 0;
+	switch (sysinfo.moduleFsm)
+	{
+		case MODULE_STATUS_CLOSE:
+		    if (sysinfo.canRunFlag != 1)
+            {
+            	break;
+            }
+			if (sysinfo.netRequest != 0)
+			{
+				portAdcCfg(1);
+				if (isModulePowerOff()) modulePowerOn();
+				portLedGpioCfg(1);
+				sysinfo.moduleFsm = MODULE_STATUS_OPEN;
+				runtick = 0;
+			}
+
+			break;
+		case MODULE_STATUS_OPEN:
+			/* 如果回到蓝牙围栏则关闭模组 */
+		    if (sysinfo.netRequest == 0)
+			{
+				if (runtick++ >= 0)
+				{
+					
+					socketDelAll();
+					portAdcCfg(0);
+					portLedGpioCfg(0);
+					portSpkGpioCfg(0);
+					sysinfo.moduleFsm = MODULE_STATUS_WAIT;
+					runtick = 0;
+					moduleInit();
+				}
+			}
+			break;
+		case MODULE_STATUS_WAIT:
+			if (runtick++ >= 3)
+			{
+				modulePowerOff();
+				sysinfo.moduleFsm = MODULE_STATUS_CLOSE;
+			}
+			break;
+		default:
+			sysinfo.moduleFsm = MODULE_STATUS_CLOSE;
+			break;
+	}
+}
 
 
 /**************************************************
@@ -2917,7 +3127,7 @@ void resetSafeArea(void)
 void taskRunInSecond(void)
 {
     rebootEveryDay();
-	BleFenceCheck();
+	netRequestTask();
     netConnectTask();
     gpsRequestTask();
     voltageCheckTask();
@@ -2931,7 +3141,7 @@ void taskRunInSecond(void)
     sysModeRunTask();
     serverManageTask();
     outputTTs();
-    systemCloseTask();
+    //systemCloseTask();
 }
 
 
@@ -3033,13 +3243,13 @@ void myTaskPreInit(void)
 	portSyspwkGpioCfg();
     tmos_memset(&sysinfo, 0, sizeof(sysinfo));
     paramInit();
-    sysinfo.logLevel = 9;
+    //sysinfo.logLevel = 9;
     SetSysClock(CLK_SOURCE_PLL_60MHz);
     portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
     //portModuleGpioCfg(1);
     portGpsGpioCfg(1);
     portLedGpioCfg(1);
-    portAdcCfg(1);
+    //portAdcCfg(1);
     portWdtCfg();
     portSpkGpioCfg(0);
     portDebugUartCfg(1);
@@ -3055,8 +3265,16 @@ void myTaskPreInit(void)
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
 	LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "SYS_GetLastResetSta:%x", SYS_GetLastResetSta());
-    addCmdTTS(TTS_STARTUP);
+   	addCmdTTS(TTS_STARTUP);
     netRequestSet(NET_REQUEST_TTS_CTL);
+    /* 开机保持长连接，3分钟内有连着蓝牙就断网，没连着蓝牙就继续长连接 */
+	netRequestSet(NET_REQUEST_CONNECT_ONE);
+	/* 开机搜一次WIFI */
+	wifiRequestSet(DEV_EXTEND_OF_FENCE);
+	/* 初始化状态 */
+	sysinfo.outBleFenceFlag  = 1;
+	sysinfo.outWifiFenceFlag = 0;
+	sysinfo.safeAreaFlag     = 1;
 }
 
 /**************************************************
@@ -3102,7 +3320,6 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
         /*重新配置IO*/
 		portModuleGpioCfg(1);
 		portGpsGpioCfg(1);
-		portLedGpioCfg(1);
 		portAdcCfg(1);
 		portWdtCfg();
 	
@@ -3119,7 +3336,6 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
 		portAdcCfg(0);
 		portModuleGpioCfg(0);
 		portGpsGpioCfg(0);
-		portLedGpioCfg(0);
 		portSpkGpioCfg(0);
 		portWdtCancel();
        	tmos_stop_task(sysinfo.taskId, APP_TASK_KERNAL_EVENT);
@@ -3132,7 +3348,12 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
     	sysAutoReq();
     	calculateNormalTime();
         LogMessage(DEBUG_ALL, "*****************************Task one minutes****************************");
-        LogPrintf(DEBUG_ALL,  "*Mode: %d, mode4run: %d outWifiTick: %d inWifiTick: %d alreadystep:%d runstep:%d modulestate:%d*", sysparam.MODE, sysinfo.mode4SysMin, sysinfo.outWifiTick,sysinfo.inWifiTick,sysinfo.alreadystep,sysinfo.runningstep, getModuleStatus());
+        connectionInfoStruct *devInfo;
+		devInfo = getBeaconInfoAll();
+		LogPrintf(DEBUG_BLE, "dev[0]sockFlag:%d dev[1]sockFlag:%d ", devInfo[0].sockFlag, devInfo[1].sockFlag);
+		LogPrintf(DEBUG_BLE, "Master sn:%s", sysinfo.masterSn);
+		LogPrintf(DEBUG_BLE, "dev[0]upTick:%d dev[1]Uptick:%d ", sysinfo.sysTick-devInfo[0].updateTick, sysinfo.sysTick - devInfo[1].updateTick);
+//        LogPrintf(DEBUG_ALL,  "*Mode: %d, mode4run: %d outWifiTick: %d inWifiTick: %d alreadystep:%d runstep:%d modulestate:%d*", sysparam.MODE, sysinfo.mode4SysMin, sysinfo.outWifiTick,sysinfo.inWifiTick,sysinfo.alreadystep,sysinfo.runningstep, getModuleStatus());
         LogMessage(DEBUG_ALL, "*************************************************************************");
         portDebugUartCfg(0);
         return events ^ APP_TASK_ONEMINUTE_EVENT;
@@ -3151,6 +3372,7 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
 void myTaskInit(void)
 {
     sysinfo.taskId = TMOS_ProcessEventRegister(myTaskEventProcess);
+    LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
     tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
     tmos_start_reload_task(sysinfo.taskId, APP_TASK_POLLUART_EVENT, MS1_TO_SYSTEM_TIME(50));
     tmos_start_reload_task(sysinfo.taskId, APP_TASK_ONEMINUTE_EVENT, MS1_TO_SYSTEM_TIME(60000));

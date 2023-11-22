@@ -104,11 +104,13 @@ void paramDefaultInit(uint8_t level)
     sysparam.mode4GapMin = 0;
     sysparam.wifiCheckGapStep_in = 500;
     sysparam.wifiCheckGapStep_out = 1000;
-    sysparam.wifiCheckGapMin_in = 30;
+    sysparam.wifiCheckGapMin_in = 60;
     sysparam.wifiCheckGapMin_out = 60;
-
     sysparam.apnAuthPort = 0;
-    appCreatePasswordBySn(dynamicParam.SN + 9);
+    sysparam.range = 0x61;
+    sysparam.smThrd = 0x60;
+    sysparam.stepFliter = 0xA7;
+    //appCreatePasswordBySn(dynamicParam.SN + 9);
     dynamicParamSaveAll();
     paramSaveAll();
 }
@@ -124,6 +126,9 @@ void paramInit(void)
    	if (sysparam.otaParamFlag != OTA_PARAM_FLAG)
     {
 		sysparam.otaParamFlag = OTA_PARAM_FLAG;
+		sysparam.range = 0x61;
+	    sysparam.smThrd = 0x60;
+	    sysparam.stepFliter = 0xA7;
 		paramSaveAll();
     }
     sysinfo.lowvoltage = sysparam.lowvoltage / 10.0;

@@ -114,6 +114,11 @@ typedef struct
 	uint8_t wifiList[5][6];	
 	uint8_t blePsw[7];
 
+    uint8_t range;
+    uint8_t stepFliter;
+    uint8_t smThrd;
+    uint8_t sysOnOff;
+
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/

@@ -403,7 +403,7 @@ static void sendTcpDataDebugShow(uint8_t link, char *txdata, int txlen)
 {
     int debuglen;
     char srclen;
-    char senddata[300];
+    char senddata[257] = { 0 };
     debuglen = txlen > 128 ? 128 : txlen;
     sprintf(senddata, "Socket[%d] Send:", link);
     srclen = tmos_strlen(senddata);
@@ -1062,7 +1062,7 @@ void protocolSend(uint8_t link, PROTOCOLTYPE protocol, void *param)
     gpsinfo_s *gpsinfo;
     insParam_s *insParam;
     recordUploadInfo_s *recInfo = NULL;
-    char txdata[400];
+    char txdata[300] = { 0 };
     int txlen = 0;
     char *debugP;
 
@@ -1202,10 +1202,7 @@ static void protoclparase01(uint8_t link, char *protocol, int size)
     {
         privateServerLoginSuccess();
     }
-    else if (link == BLE_LINK)
-    {
-        bleSerLoginReady();
-    }
+
     else if (link == HIDDEN_LINK)
     {
         hiddenServerLoginSuccess();

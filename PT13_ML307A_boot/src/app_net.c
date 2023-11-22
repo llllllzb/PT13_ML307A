@@ -286,8 +286,8 @@ void modulePowerOff(void)
     moduleInit();
     portUartCfg(APPUSART0, 0, 115200, NULL);
     POWER_OFF;
-    RSTKEY_HIGH;
-    PWRKEY_HIGH;
+    RSTKEY_LOW;
+    PWRKEY_LOW;
     socketDelAll();
 }
 
@@ -315,9 +315,9 @@ void moduleReset(void)
     LogMessage(DEBUG_ALL, "moduleReset");
     moduleInit();
     POWER_OFF;
-    PWRKEY_HIGH;
-    RSTKEY_HIGH;
-    startTimer(1000, modulePowerOn, 0);
+    PWRKEY_LOW;
+    RSTKEY_LOW;
+    startTimer(3000, modulePowerOn, 0);
     socketDelAll();
 }
 

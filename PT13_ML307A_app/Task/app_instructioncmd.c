@@ -12,6 +12,7 @@
 #include "app_server.h"
 #include "app_jt808.h"
 #include "app_mir3da.h"
+#include "app_key.h"
 const instruction_s insCmdTable[] =
 {
     {PARAM_INS, "PARAM"},
@@ -53,6 +54,9 @@ const instruction_s insCmdTable[] =
     {PETLED_INS, "PETLED"},
     {PETSPK_INS, "PETSPK"},
     {UART_INS, "UART"},
+    {PETDEBUG_INS, "PETDEBUG"},
+    {STEPPARAM_INS, "STEPPARAM"},
+    {SYSTEMSHUTDOWN_INS, "SYSTEMSHUTDOWN"},
 };
 
 static insMode_e mode123;
@@ -63,7 +67,8 @@ static uint8_t serverType;
 static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
 {
     insParam_s *insparam;
-    char debug[128] = { 0 };
+
+
     switch (mode)
     {
         case DEBUG_MODE:
@@ -91,10 +96,14 @@ static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *pa
         case BLE_MODE:
         	if (param != NULL)
         	{
+        	    char debug[156] = { 0 };
+        	    uint16_t debuglen = 0;
+        		debuglen = len + 3 > 155 ? 155 : len + 3;
         		sprintf(debug, "RE:%s", buf);
-        		debug[len + 3] = 0;
+        		debug[debuglen] = 0;
 	        	insparam = (insParam_s *)param;
-	            appSendNotifyData(insparam->bleConhandle, debug, len+3);
+	        	LogPrintf(DEBUG_ALL, "%s len:%d", debug, debuglen);
+	            appSendNotifyData(insparam->bleConhandle, debug, debuglen);
             }
             break;
         case JT808_MODE:
@@ -180,7 +189,8 @@ static void doParamInstruction(ITEM *item, char *message)
             sprintf(message + strlen(message), "Mode23: %d minutes;", sysparam.gapMinutes);
             break;
        	case MODE4:
-			sprintf(message + strlen(message), "Mode4: %d minutes;", sysparam.mode4GapMin);
+			sprintf(message + strlen(message), "Mode4: wifi %dmin, %dstep, %dstep;", 
+			sysparam.MODE,sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
        		break;
     }
 
@@ -212,7 +222,7 @@ static void doStatusInstruction(ITEM *item, char *message)
     sprintf(message + strlen(message), "Gsensor=%s;", read_gsensor_id() == 0x13 ? "OK" : "ERR");
     sprintf(message + strlen(message), "RUNNINGTIME=%dmin;", dynamicParam.runningtime / 60);
     sprintf(message + strlen(message), "STEP=%d;", dynamicParam.step);
-    sprintf(message + strlen(message), "SAFEAREA=%s", netRequestGet(NET_REQUEST_WIFI_CTL) ? "OUT" : "IN");
+    sprintf(message + strlen(message), "SAFEAREA=%s", sysinfo.safeAreaFlag ? "IN" : "OUT");
 }
 
 
@@ -292,7 +302,8 @@ static void doModeInstruction(ITEM *item, char *message)
     {
     	if (sysparam.MODE == MODE4)
     	{
-			sprintf(message, "Mode%d,upload every %d min", sysparam.MODE, sysparam.mode4GapMin);
+			sprintf(message, "Mode%d wifi %dmin, %dstep, %dstep;", 
+			sysparam.MODE, sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
 			
     	}
     	else
@@ -764,12 +775,12 @@ void doDebugInstrucion(ITEM *item, char *message)
     sprintf(message + strlen(message), "sysrun:%.2d:%.2d:%.2d;gpsRequest:%02X;gpslast:%.2d:%.2d:%.2d;",
             sysinfo.sysTick / 3600, sysinfo.sysTick % 3600 / 60, sysinfo.sysTick % 60, sysinfo.gpsRequest,
             sysinfo.gpsUpdatetick / 3600, sysinfo.gpsUpdatetick % 3600 / 60, sysinfo.gpsUpdatetick % 60);
-    sprintf(message + strlen(message), "hideLogin:%s;", hiddenServerIsReady() ? "Yes" : "No");
-    sprintf(message + strlen(message), "netrequest:%02x;", sysinfo.netRequest);
-	sprintf(message + strlen(message), "wifirequest:%02x;", sysinfo.wifiExtendEvt);
-	sprintf(message + strlen(message), "alarmRequest:%02x;", sysinfo.alarmRequest);
-	sprintf(message + strlen(message), "outBleFence:%d;", sysinfo.outBleFenceFlag);
-	sprintf(message + strlen(message), "SYS_GetLastResetSta:%02x;", SYS_GetLastResetSta());
+    sprintf(message + strlen(message), "netreq:%02x;", sysinfo.netRequest);
+	sprintf(message + strlen(message), "wifiEvt:%02x;", sysinfo.wifiExtendEvt);
+	sprintf(message + strlen(message), "alarmReq:%02x;", sysinfo.alarmRequest);
+	sprintf(message + strlen(message), "outBle:%d;", sysinfo.outBleFenceFlag);
+	sprintf(message + strlen(message), "outWifi:%d;", sysinfo.outWifiFenceFlag);
+	sprintf(message + strlen(message), "runFsm:%d;", sysinfo.runFsm);
     paramSaveAll();
     dynamicParamSaveAll();
 }
@@ -1530,17 +1541,64 @@ static void doUartInstruction(ITEM *item, char *message)
 	if (atoi(item->item_data[1]) == 0)
 	{
 		portUartCfg(APPUSART2, 0, 115200, NULL);
+		sysinfo.logLevel = 0;
+		portSyspwkOffGpioCfg();
+		strcpy(message, "Close uart 2");
 	}
 	else
 	{
 		portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
+		strcpy(message, "Open uart 2");
 	}
 }
+
+static void doPetDebugInstruction(ITEM *item, char *message)
+{
+	connectionInfoStruct *devInfo;
+	devInfo = getBeaconInfoAll();
+	sprintf(message, "dev[0]socksuccess:%d dev[1]socksuccess:%d ", devInfo[0].sockFlag, devInfo[1].sockFlag);
+	sprintf(message + strlen(message), "Master sn:%s", sysinfo.masterSn);
+	sprintf(message + strlen(message), "dev[0]upTick:%d dev[1]Uptick:%d ", devInfo[0].updateTick, devInfo[1].updateTick);
+}
+
+static void doStepParamInstruction(ITEM *item, char *message)
+{
+    if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+        sprintf(message, "Gsensor param range is 0x%x, step fliter is 0x%x, sm threshold is 0x%x", sysparam.range, sysparam.stepFliter, sysparam.smThrd);
+    }
+    else
+    {
+    	portGsensorCtl(0);
+		if (item->item_data[1][0] != 0)
+		{
+			sysparam.range = strtol(item->item_data[1], NULL, 16);
+		}
+		if (item->item_data[2][0] != 0)
+		{
+			sysparam.stepFliter = strtol(item->item_data[2], NULL, 16);
+		}
+		if (item->item_data[3][0] != 0)
+		{
+			sysparam.smThrd = strtol(item->item_data[3], NULL, 16);
+		}
+		portGsensorCtl(1);
+        sprintf(message, "Update param range to 0x%x, step fliter to 0x%x, sm threshold is 0x%x", sysparam.range, sysparam.stepFliter, sysparam.smThrd);
+        paramSaveAll();
+    }
+}
+
+static void doSystemShutDownInstruction(ITEM *item, char *message)
+{
+	systemShutDownCallback();
+	strcpy(message, "systemShutDownCallback");
+}
+
 
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
 {
-    char message[512] = {0};
+    char message[384] = {0};
     message[0] = 0;
     switch (cmdid)
     {
@@ -1657,6 +1715,12 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
        		break;
        	case UART_INS:
 			doUartInstruction(item, message);
+       		break;
+       	case PETDEBUG_INS:
+			doPetDebugInstruction(item, message);
+       		break;
+       	case SYSTEMSHUTDOWN_INS:
+			doSystemShutDownInstruction(item, message);
        		break;
         default:
             if (mode == SMS_MODE)

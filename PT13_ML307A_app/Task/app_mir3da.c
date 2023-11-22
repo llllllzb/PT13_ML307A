@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include "app_port.h"
 #include "app_sys.h"
-
+#include "app_param.h"
 
 u8_m i2c_addr = 0x26;
 
@@ -92,97 +92,61 @@ s8_m readInterruptConfig(void)
 
 
 //Initialization
-s8_m mir3da_init(void){
+s8_m mir3da_init(void)
+{
 	s8_m res = 0;
 	u8_m data_m = 0;
+	int i;
 
-  //Retry 3 times
-	res = mir3da_register_read(NSA_REG_WHO_AM_I,&data_m,1);
-    if(data_m != 0x13){
-        res = mir3da_register_read(NSA_REG_WHO_AM_I,&data_m,1);
-        if(data_m != 0x13){
-            res = mir3da_register_read(NSA_REG_WHO_AM_I,&data_m,1);
-            if(data_m != 0x13){
-                LogPrintf(DEBUG_ALL, "------mir3da read chip id  error= %x-----\r\n",data_m);  
-                return -1;
-            }
-        }
-    }
-    mir3da_register_mask_write(0x00, 0x24, 0x24);
-	DelayMs(50); //delay 50ms
- 
-	LogPrintf(DEBUG_ALL, "------mir3da chip id = %x-----\r\n",data_m); 
+	for(i=0; i<3; i++){
+		res = mir3da_register_read(REG_CHIP_ID, &data_m, 1);
+        if(data_m != 0x13)
+        {
+        	LogPrintf(DEBUG_ALL, "mir3da_init==>Read chip error=%X\r\n\r\n", data_m);
+			return -1;
+		}
+	}
+	LogPrintf(DEBUG_ALL, "mir3da_init==>Read chip id=%X\r\n", data_m);
 
-	res |= mir3da_register_write(NSA_REG_G_RANGE, 0x01);               //+/-4G,14bit
-	res |= mir3da_register_write(NSA_REG_POWERMODE_BW, 0x14);          //normal mode
-	res |= mir3da_register_write(NSA_REG_ODR_AXIS_DISABLE, 0x07);      //ODR = 125hz
-	
-	//Engineering mode
-	res |= mir3da_register_write(NSA_REG_ENGINEERING_MODE, 0x83);
-	res |= mir3da_register_write(NSA_REG_ENGINEERING_MODE, 0x69);
-	res |= mir3da_register_write(NSA_REG_ENGINEERING_MODE, 0xBD);
-  
-	//Reduce power consumption
+	//MUST do softreset(POR)
+	mir3da_register_write(REG_SPI_CONFIG, 0x24);
+	DelayMs(20);
+	mir3da_register_write(REG_RESOLUTION_RANGE, sysparam.range);	//+/-4G,16bit
+	mir3da_register_write(REG_MODE_ODR, 0x07);			//lowpower mode, ODR 100hz
+
+	mir3da_register_write(REG_INT_SET1, 0x80);			//INT source, filtered data
+	mir3da_register_write(REG_INT_CONFIG, 0x00);		//PP, active high
+	//load_offset_from_filesystem(offset_x, offset_y, offset_z);	//pseudo-code
+
+	//private register, key to close internal pull up.
+	mir3da_register_write(0x7F, 0x83);
+	mir3da_register_write(0x7F, 0x69);
+	mir3da_register_write(0x7F, 0xBD);
+
+
+	//mir3da_register_mask_write(0x8F, 0x02, 0x00);	//don't pull up i2c sda/scl pin if needed
+	//mir3da_register_mask_write(0x8C, 0x80, 0x00);	//don't pull up cs pin if needed
+
 	if(i2c_addr == 0x26){
-		mir3da_register_mask_write(NSA_REG_SENS_COMP, 0x40, 0x00);
+		mir3da_register_mask_write(0x8C, 0x40, 0x00);	//must close pin1/sdo pull up
 	}
 
-	return res;	    	
+    return res; 	
 }
-
-
-
-int mir3da_open_step_counter(void)
-{
-	int res = 0;
-	
-	res |=  mir3da_register_write(NSA_REG_STEP_CONGIF1, 0x01);
-	res |=  mir3da_register_write(NSA_REG_STEP_CONGIF2, 0x62);
-	res |=  mir3da_register_write(NSA_REG_STEP_CONGIF3, 0x46);
-	res |=  mir3da_register_write(NSA_REG_STEP_CONGIF4, 0x33);
-	res |=  mir3da_register_write(NSA_REG_STEP_FILTER, 0xA2);	
-	
-	return res;
-}
-
-int mir3da_close_step_counter(void)
-{
-	mir3da_register_mask_write(NSA_REG_STEP_FILTER, 0x80, 0x00);	
-}
-
-
-int mir3da_get_step(void)
-{
-	unsigned char    tmp_data[2] = {0};
-	u16_m f_step;
-
-	if((mir3da_register_read(NSA_REG_STEPS_MSB,&tmp_data[0], 1) == 0) && (mir3da_register_read(NSA_REG_STEPS_LSB,&tmp_data[1], 1) == 0))
-		f_step = (tmp_data[0] << 8 | tmp_data[1])/2; 
-
-	return (f_step);
-}
-
-
-
-void mir3da_init_pedometer(void)
-{
-	mir3da_init();
-	mir3da_open_step_counter();
-}
-
-
 
 //enable/disable the chip
 s8_m mir3da_set_enable(u8_m enable)
 {
-	s8_m res = 0;
+    s8_m res = 0;
 	if(enable)
-		res = mir3da_register_write(NSA_REG_POWERMODE_BW,0x14);
+		mir3da_register_mask_write(REG_MODE_AXIS, 0x80, 0x00);
 	else	
-		res = mir3da_register_write(NSA_REG_POWERMODE_BW,0x80);
-	
-	return res;	
+		mir3da_register_mask_write(REG_MODE_AXIS, 0x80, 0x80);
+
+	DelayMs(100);
+    return res;
 }
+
 
 //Read three axis data, 1024 LSB = 1 g
 s8_m mir3da_read_data(s16_m *x, s16_m *y, s16_m *z)
@@ -206,20 +170,22 @@ s8_m mir3da_read_data(s16_m *x, s16_m *y, s16_m *z)
 }
 
 //open active interrupt
-s8_m mir3da_open_interrupt(u8_m th){
-	s8_m   res = 0;
+s8_m mir3da_open_interrupt(u8_m th)
+{
+    s8_m   res = 0;
 
-	res = mir3da_register_write(NSA_REG_ACTIVE_DURATION,0x02);
-	res = mir3da_register_write(NSA_REG_ACTIVE_THRESHOLD,th);
-	res = mir3da_register_write(NSA_REG_INTERRUPT_MAPPING1,0x04);
-	res = mir3da_register_write(NSA_REG_INT_LATCH, 0xEE);  //latch 100ms
-	res = mir3da_register_write(NSA_REG_INTERRUPT_SETTINGS1,0x87);
-
-	return res;
+    res = mir3da_register_write(REG_INT_SET1, 0x87);
+    res = mir3da_register_write(REG_ACTIVE_DUR, 0x00);
+   	res = mir3da_register_write(REG_ACTIVE_X_THS, 0x24);
+	res = mir3da_register_write(REG_ACTIVE_Y_THS, 0x24);
+	res = mir3da_register_write(REG_ACTIVE_Z_THS, 0x24);
+    res = mir3da_register_write(REG_INT_MAP1, 0x04);
+    return res;
 }
 
 //close active interrupt
-s8_m mir3da_close_interrupt(void){
+s8_m mir3da_close_interrupt(void)
+{
 	s8_m   res = 0;
 
 	res = mir3da_register_write(NSA_REG_INTERRUPT_SETTINGS1,0x00 );
@@ -232,21 +198,37 @@ s8_m mir3da_close_interrupt(void){
 
 void startStep(void)
 {
-    mir3da_open_step_counter();
+    LogMessage(DEBUG_ALL, "Gsensor enable step counting\r\n");
+	mir3da_register_write(0x2F,   0x78);
+	mir3da_register_write(0x30,   0x5D);
+	mir3da_register_write(0x31,   0x5D);
+	mir3da_register_write(0x32,   0x00);
+	mir3da_register_write(0x33,   sysparam.stepFliter);
+	mir3da_register_write(0x34,   sysparam.smThrd);
+	mir3da_register_write(0x35,   0x77);
+	mir3da_register_write(0x37,   0x41);
+	mir3da_register_write(0x2D,   0x8F);
 }
+
 void stopStep(void)
 {
-    mir3da_close_step_counter();
+    mir3da_register_write(0x33, 0x22);
 }
 u16_m getStep(void)
 {
-    u16_m step;
-    step = mir3da_get_step();
-    return step;
+	s16_m f_step=0;
+	u8_m tmp_data[2] = {0};
+
+	mir3da_register_read(REG_STEPS_MSB, tmp_data, 2);
+	
+	f_step = tmp_data[0] << 8 | tmp_data[1];
+
+	return f_step;
+
 }
 void clearStep(void)
 {
-    mir3da_close_step_counter();
+    mir3da_register_mask_write(REG_RESET_STEP, 0x80, 0x80);
 }
 
 
