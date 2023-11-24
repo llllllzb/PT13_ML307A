@@ -1251,7 +1251,7 @@ static void voltageCheckTask(void)
     sysinfo.outsidevoltage = x * sysparam.adccal;
     sysinfo.insidevoltage = sysinfo.outsidevoltage;
 
-    //LogPrintf(DEBUG_ALL, "x:%.2f, outsidevoltage:%.2f", x, sysinfo.outsidevoltage);
+    LogPrintf(DEBUG_ALL, "x:%.2f, outsidevoltage:%.2f", x, sysinfo.outsidevoltage);
 
 	//电池保护
     if (sysinfo.outsidevoltage < 2.4 && sysinfo.canRunFlag == 1)
@@ -2194,7 +2194,7 @@ uint8_t SysBatDetection(void)
         {
 			waitTick = 0;
 			volCheckRequestClear();
-			LogMessage(DEBUG_ALL, "电池电压正常，正常开机");
+			LogPrintf(DEBUG_ALL, "电池电压正常，正常开机:%f", sysinfo.outsidevoltage);
         }
         else
         {
@@ -2203,7 +2203,9 @@ uint8_t SysBatDetection(void)
 				waitTick = 0;
 				changeModeFsm(MODE_DONE);
 				volCheckRequestClear();
-				LogMessage(DEBUG_ALL, "电池电压偏低，关机");
+				gpsRequestClear(GPS_REQUEST_ALL);
+				netRequestClear(NET_REQUEST_ALL);
+				LogPrintf(DEBUG_ALL, "电池电压偏低，关机:%f", sysinfo.outsidevoltage);
 			}
         }
         return 0;
@@ -3081,6 +3083,7 @@ void netRequestTask(void)
 				portAdcCfg(1);
 				if (isModulePowerOff()) modulePowerOn();
 				portLedGpioCfg(1);
+
 				sysinfo.moduleFsm = MODULE_STATUS_OPEN;
 				runtick = 0;
 			}
@@ -3090,13 +3093,14 @@ void netRequestTask(void)
 			/* 如果回到蓝牙围栏则关闭模组 */
 		    if (sysinfo.netRequest == 0)
 			{
-				if (runtick++ >= 0)
+				/* 这里要等于0，如果写大于0 */
+				if (runtick++ >= 2)
 				{
 					
 					socketDelAll();
 					portAdcCfg(0);
 					portLedGpioCfg(0);
-					portSpkGpioCfg(0);
+
 					sysinfo.moduleFsm = MODULE_STATUS_WAIT;
 					runtick = 0;
 					moduleInit();
@@ -3127,7 +3131,6 @@ void netRequestTask(void)
 void taskRunInSecond(void)
 {
     rebootEveryDay();
-	netRequestTask();
     netConnectTask();
     gpsRequestTask();
     voltageCheckTask();
@@ -3230,6 +3233,12 @@ void debugtask(void)
     }
 }
 
+void openuart2(void)
+{
+	portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
+	SYS_POWER_ON;
+}
+
 /**************************************************
 @bref		系统启动时配置
 @param
@@ -3240,28 +3249,29 @@ void debugtask(void)
 void myTaskPreInit(void)
 {
 	portGpioSetDefCfg();
-	portSyspwkGpioCfg();
+	
     tmos_memset(&sysinfo, 0, sizeof(sysinfo));
     paramInit();
-    //sysinfo.logLevel = 9;
+    sysinfo.logLevel = 9;
     SetSysClock(CLK_SOURCE_PLL_60MHz);
-    portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
+
     //portModuleGpioCfg(1);
     portGpsGpioCfg(1);
     portLedGpioCfg(1);
-    //portAdcCfg(1);
+    portAdcCfg(1);
     portWdtCfg();
     portSpkGpioCfg(0);
     portDebugUartCfg(1);
     socketListInit();
     portSleepDn();
 	ledStatusUpdate(SYSTEM_LED_RUN, 1);
-	
+	portSyspwkOffGpioCfg();
 
     volCheckRequestSet();
     createSystemTask(ledTask, 1);
     createSystemTask(outputNode, 2);
     createSystemTask(keyTask, 1);
+    startTimer(10, openuart2, 0);
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
 	LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "SYS_GetLastResetSta:%x", SYS_GetLastResetSta());
@@ -3296,6 +3306,16 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
         }
         return (events ^ SYS_EVENT_MSG);
     }
+    if (events & APP_TASK_CLOSE_MODULE_EVENT)
+    {
+		modulePowerOff();
+        return events ^ APP_TASK_CLOSE_MODULE_EVENT;
+    }
+    if (events & APP_TASK_RESET_EVENT)
+    {
+    	portSysReset();
+        return events ^ APP_TASK_RESET_EVENT;
+    }
 
     if (events & APP_TASK_KERNAL_EVENT)
     {
@@ -3322,7 +3342,7 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
 		portGpsGpioCfg(1);
 		portAdcCfg(1);
 		portWdtCfg();
-	
+		
         tmos_start_reload_task(sysinfo.taskId, APP_TASK_KERNAL_EVENT, MS1_TO_SYSTEM_TIME(100));
         return events ^ APP_TASK_RUN_EVENT;
     }

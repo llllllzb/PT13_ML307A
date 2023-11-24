@@ -127,6 +127,7 @@ uint8_t createNode(char *data, uint16_t datalen, uint8_t currentcmd)
             {
                 free(headNode);
                 headNode = NULL;
+                LogPrintf(DEBUG_ALL, "createNode==>FAIL");
                 return 0;
             }
         }
@@ -160,6 +161,7 @@ uint8_t createNode(char *data, uint16_t datalen, uint8_t currentcmd)
                 {
                     free(nextnode);
                     nextnode = NULL;
+                    LogPrintf(DEBUG_ALL, "createNode==>FAIL");
                     return 0;
                 }
             }
@@ -217,7 +219,10 @@ void outputNode(void)
     {
         nextnode = currentnode->nextnode;
         moduleState.cmd = currentnode->currentcmd;
-
+        if (moduleState.cmd == MTTSPLAY_CMD)
+        {
+            portSpkGpioCfg(1);
+        }
         //数据发送
         portUartSend(&usart0_ctl, (uint8_t *)currentnode->data, currentnode->datalen);
         /* 模组在使用的过程中可能会掉电 */
@@ -626,7 +631,7 @@ void netConnectTask(void)
                 moduleCtrl.atCount = 0;
                 moduleState.atResponOK = 0;
                 moduleState.cpinResponOk = 0;
-                ttsVolumeCfg(15);
+                ttsVolumeCfg(sysparam.volume);
                 changeProcess(CPIN_STATUS);
             }
             else
@@ -2201,6 +2206,7 @@ void mttsplayParser(uint8_t *buf, uint16_t len)
     {
         sysinfo.ttsPlayNow = 0;
         LogMessage(DEBUG_ALL, "tts play done!!!");
+        portSpkGpioCfg(0);
 		if (sysinfo.closeTTs == 1)
 		{
 			LogPrintf(DEBUG_ALL, "发送完关机播报");
@@ -2396,13 +2402,11 @@ int socketSendData(uint8_t link, uint8_t *data, uint16_t len)
 {
     int ret = 0;
     char param[10];
-
     if (socketGetConnStatus(link) == 0)
     {
         //链路未链接
         return 0;
     }
-
     sprintf(param, "%d,%d", link, len);
     sendModuleCmd(MIPSEND_CMD, param);
     createNode((char *)data, len, MIPSEND_CMD);
@@ -2880,7 +2884,8 @@ void addCmdTTS(tts_Chinese_e ttscmd)
 //		LogPrintf(DEBUG_ALL, "addTTS==>module is power off");
 //		return;
 //	}
-	portSpkGpioCfg(1);
+
+	netRequestSet(NET_REQUEST_TTS_CTL);
 	/*转换*/
 	for (i = 0; i < sizeof(ttsTable) / sizeof(ttsTable[0]); i++)
 	{
@@ -2975,8 +2980,8 @@ void addTTS(char *tts)
         LogMessage(DEBUG_ALL, "add tts fail");
         return;
     }
-	portSpkGpioCfg(1);
 
+	netRequestSet(NET_REQUEST_TTS_CTL);
     len = strlen(tts) + 1;
     if (ttsHead == NULL)
     {
@@ -3044,7 +3049,6 @@ void outputTTs(void)
     }
     if (isModulePowerOff())
     {
-		modulePowerOn();
 		return;
     }
     /* 设备开机正常 */
@@ -3071,13 +3075,13 @@ void outputTTs(void)
     	}
     	else
     	{
-			portSpkGpioCfg(0);
+			
     	}
         return ;
     }
     LogPrintf(DEBUG_ALL, "TTS==>[%s]", ttsHead->tts);
     sysinfo.ttsPlayNow = 1;
-    sysinfo.ttstick = 2;
+    sysinfo.ttstick = 20;
     playtts(ttsHead->tts);
     next = ttsHead->next;
     free(ttsHead);

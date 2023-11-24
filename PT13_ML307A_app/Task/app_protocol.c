@@ -403,7 +403,7 @@ static void sendTcpDataDebugShow(uint8_t link, char *txdata, int txlen)
 {
     int debuglen;
     char srclen;
-    char senddata[257] = { 0 };
+    char senddata[280] = { 0 };
     debuglen = txlen > 128 ? 128 : txlen;
     sprintf(senddata, "Socket[%d] Send:", link);
     srclen = tmos_strlen(senddata);
@@ -1062,7 +1062,7 @@ void protocolSend(uint8_t link, PROTOCOLTYPE protocol, void *param)
     gpsinfo_s *gpsinfo;
     insParam_s *insParam;
     recordUploadInfo_s *recInfo = NULL;
-    char txdata[300] = { 0 };
+    char txdata[500] = { 0 };
     int txlen = 0;
     char *debugP;
 

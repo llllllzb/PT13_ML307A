@@ -692,10 +692,12 @@ void portSpkGpioCfg(uint8_t onoff)
 	{
 		GPIOA_ModeCfg(SPKPWR_PIN, GPIO_ModeOut_PP_5mA);
 		SPKPWR_ON;
+		LogPrintf(DEBUG_ALL, "portSpkGpioCfg==>open");
 	}
 	else
 	{
 		GPIOA_ModeCfg(SPKPWR_PIN, GPIO_ModeIN_PD);
+		LogPrintf(DEBUG_ALL, "portSpkGpioCfg==>close");
 	}
 }
 
@@ -707,7 +709,7 @@ void portSpkGpioCfg(uint8_t onoff)
 void portSyspwkGpioCfg(void)
 {
 	GPIOB_ModeCfg(SYS_POWER_PIN, GPIO_ModeOut_PP_5mA);
-	SYS_POWER_ON;
+	SYS_POWER_OFF;
 }
 
 /**
@@ -717,19 +719,11 @@ void portSyspwkGpioCfg(void)
  */
 void portSyspwkOffGpioCfg(void)
 {
-//	portUartCfg(APPUSART2, 0, 115200, NULL);
-//	PWR_PeriphWakeUpCfg( ENABLE, RB_SLP_GPIO_WAKE, Long_Delay );
-//    GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_Floating);
-//    GPIOB_ITModeCfg(SYS_PWROFF_PIN, GPIO_ITMode_FallEdge);
-//	if (GPIOB_ReadPortPin(SYS_PWROFF_PIN)) 
-//	{
-//    	GPIOB_ResetBits(SYS_PWROFF_PIN);
-//    }
-//    else
-//    {
-//        GPIOB_SetBits(SYS_PWROFF_PIN);
-//    }
-//    PFIC_EnableIRQ(GPIO_B_IRQn);
+
+    GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_PU);
+
+	portSyspwkGpioCfg();
+
 }
 
 
@@ -1582,6 +1576,7 @@ void portAdcCfg(uint8_t onoff)
         GPIOA_ModeCfg(VCARD_ADCPIN, GPIO_ModeIN_PU);
     }
 }
+
 /**
  * @brief   读取ADC电压
  * @param
@@ -1592,18 +1587,31 @@ void portAdcCfg(uint8_t onoff)
 float portGetAdcVol(ADC_SingleChannelTypeDef channel)
 {
     float value;
+    float vol;
     ADC_ChannelCfg(channel);
+    DelayUs(1);
     ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_0);
-    ADC_ExcutSingleConver();
     value = (ADC_ExcutSingleConver() / 2048.0) * 1.05;
     if (value >= 2.0)
     {
         ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_1_2);
-        ADC_ExcutSingleConver();
         value = (ADC_ExcutSingleConver() / 1024.0 - 1) * 1.05;
     }
-    return value;
+    for (uint8_t i = 0; i < 5; i++)
+    {
+        DelayUs(10);
+        ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_0);
+        value += (ADC_ExcutSingleConver() / 2048.0) * 1.05;
+        if (value >= 2.0)
+        {
+            ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_1_2);
+            value = (ADC_ExcutSingleConver() / 1024.0 - 1) * 1.05;
+        }
+    }
+    vol = value / 5;
+    return vol;
 }
+
 /**
  * @brief   使能睡眠
  * @param

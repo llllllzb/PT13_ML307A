@@ -65,6 +65,8 @@
 #define APP_TASK_RUN_EVENT				0x0004
 #define APP_TASK_STOP_EVENT				0x0008
 #define APP_TASK_ONEMINUTE_EVENT		0x0010
+#define APP_TASK_CLOSE_MODULE_EVENT		0x0020
+#define APP_TASK_RESET_EVENT			0x0040
 
 #define UART_RECV_BUFF_SIZE 			512
 #define DEBUG_BUFF_SIZE					256
@@ -231,7 +233,7 @@ void netRequestSet(uint32_t req);
 void netRequestClear(uint32_t req);
 uint8_t netRequestGet(uint32_t req);
 
-
+void netRequestTask(void);
 void motionOccur(void);
 void motionInit(void);
 void modeTryToStop(void);

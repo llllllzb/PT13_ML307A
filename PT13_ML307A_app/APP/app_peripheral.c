@@ -445,11 +445,14 @@ static tmosEvents appPeripheralEventProcess(tmosTaskID taskID, tmosEvents events
 	{
 		/* 这个任务永不停止，所以systick放这里 */
 		sysinfo.sysTick++;
-		LogPrintf(DEBUG_ALL, "fsm:%d %x %x %x %x %x %x", sysinfo.runFsm, sysinfo.gpsRequest,sysinfo.alarmRequest, sysinfo.wifiExtendEvt,sysinfo.lbsRequest,sysinfo.netRequest , sysinfo.outBleFenceFlag);
+		LogPrintf(DEBUG_ALL, "fsm:%d %x %x %x %x %x %x %x", sysinfo.runFsm, sysinfo.gpsRequest, 
+		sysinfo.alarmRequest, sysinfo.wifiExtendEvt,sysinfo.lbsRequest, sysinfo.netRequest, 
+		sysinfo.outBleFenceFlag, sysinfo.outWifiFenceFlag);
 		movingStatusCheck();
 		wifiCheckByStep();
 		BleFenceCheck();
 		updateModuleStatus();
+		    netRequestTask();
 		return events ^ APP_PERIPHERAL_ONEMINUTE_EVENT;
 	}
 	LogPrintf(DEBUG_ALL, "unknow event taskid:%d events:%d", taskID, events);

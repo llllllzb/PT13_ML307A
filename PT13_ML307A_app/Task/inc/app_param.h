@@ -118,6 +118,7 @@ typedef struct
     uint8_t stepFliter;
     uint8_t smThrd;
     uint8_t sysOnOff;
+    uint8_t volume;
 
 } systemParam_s;
 

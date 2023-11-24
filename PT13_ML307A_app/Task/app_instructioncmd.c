@@ -57,6 +57,7 @@ const instruction_s insCmdTable[] =
     {PETDEBUG_INS, "PETDEBUG"},
     {STEPPARAM_INS, "STEPPARAM"},
     {SYSTEMSHUTDOWN_INS, "SYSTEMSHUTDOWN"},
+    {VOLUME_INS, "VOLUME"},
 };
 
 static insMode_e mode123;
@@ -649,8 +650,8 @@ void doUPSInstruction(ITEM *item, char *message)
     strcpy(bootparam.apnpassword, sysparam.apnpassword);
     strcpy(bootparam.codeVersion, EEPROM_VERSION);
     bootParamSaveAll();
-    startTimer(30, modeTryToStop, 0);
-    startTimer(80, portSysReset, 0);
+        tmos_start_task(sysinfo.taskId, APP_TASK_CLOSE_MODULE_EVENT, MS1_TO_SYSTEM_TIME(3000));
+    tmos_start_task(sysinfo.taskId, APP_TASK_RESET_EVENT, MS1_TO_SYSTEM_TIME(8000));
 }
 
 void doLOWWInstruction(ITEM *item, char *message)
@@ -737,8 +738,8 @@ void doPOITYPEInstruction(ITEM *item, char *message)
 void doResetInstruction(ITEM *item, char *message)
 {
     sprintf(message, "System will reset after 8 seconds");
-	startTimer(30, modulePowerOff, 0);
-    startTimer(80, portSysReset, 0);
+    tmos_start_task(sysinfo.taskId, APP_TASK_CLOSE_MODULE_EVENT, MS1_TO_SYSTEM_TIME(3000));
+    tmos_start_task(sysinfo.taskId, APP_TASK_RESET_EVENT, MS1_TO_SYSTEM_TIME(8000));
 }
 
 void doUTCInstruction(ITEM *item, char *message)
@@ -768,6 +769,7 @@ void doDebugInstrucion(ITEM *item, char *message)
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
+	connectionInfoStruct *dev = getBeaconInfoAll();
 
     portGetRtcDateTime(&year, &month, &date, &hour, &minute, &second);
 
@@ -781,6 +783,7 @@ void doDebugInstrucion(ITEM *item, char *message)
 	sprintf(message + strlen(message), "outBle:%d;", sysinfo.outBleFenceFlag);
 	sprintf(message + strlen(message), "outWifi:%d;", sysinfo.outWifiFenceFlag);
 	sprintf(message + strlen(message), "runFsm:%d;", sysinfo.runFsm);
+	sprintf(message + strlen(message), "ble:%d %d;", dev[0].useflag, dev[1].useflag);
     paramSaveAll();
     dynamicParamSaveAll();
 }
@@ -1521,10 +1524,12 @@ static void doPetSpkInstruction(ITEM *item, char *message)
 		if (atoi(item->item_data[1]) == 0)
 		{
 			sysinfo.petspkOnoff = 0;
+			netRequestClear(NET_REQUEST_TTS_CTL);
 		}
 		else
 		{
 			sysinfo.petspkOnoff = 1;
+			netRequestSet(NET_REQUEST_TTS_CTL);
 		}
 		tmos_memset(sysinfo.ttsContent, 0, 60);
 		sprintf(message, "%s the pet speaker", sysinfo.petspkOnoff ? "Open" : "Close");
@@ -1594,6 +1599,27 @@ static void doSystemShutDownInstruction(ITEM *item, char *message)
 	strcpy(message, "systemShutDownCallback");
 }
 
+static void doVolumeInstruction(ITEM *item, char *message)
+{
+    if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+        sprintf(message, "volume is %d", sysparam.volume);
+    }
+    else
+    {
+        if (item->item_data[1][0] != 0)
+        {
+            sysparam.volume = (uint8_t)atoi(item->item_data[1]);
+            if (sysparam.volume > 15)
+            {
+                sysparam.volume = 15;
+            }
+            ttsVolumeCfg(sysparam.volume);
+        }
+        sprintf(message, "Update volume to %d", sysparam.volume);
+        paramSaveAll();
+    }
+}
 
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
@@ -1716,16 +1742,25 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
        	case UART_INS:
 			doUartInstruction(item, message);
        		break;
+       	case STEPPARAM_INS:
+       	    doStepParamInstruction(item, message);
+       	    break;
        	case PETDEBUG_INS:
 			doPetDebugInstruction(item, message);
        		break;
        	case SYSTEMSHUTDOWN_INS:
 			doSystemShutDownInstruction(item, message);
        		break;
+       	case VOLUME_INS:
+       	    doVolumeInstruction(item, message);
+       	    break;
         default:
-            if (mode == SMS_MODE)
+            if (mode == SMS_MODE || mode == BLE_MODE)
             {
-                deleteAllMessage();
+            	if (mode == SMS_MODE)
+            	{
+                	deleteAllMessage();
+                }
                 return ;
             }
             snprintf(message, 50, "Unsupport CMD:%s;", item->item_data[0]);
