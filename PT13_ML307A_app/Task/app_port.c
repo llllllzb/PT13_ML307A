@@ -719,13 +719,9 @@ void portSyspwkGpioCfg(void)
  */
 void portSyspwkOffGpioCfg(void)
 {
-
     GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_PU);
-
 	portSyspwkGpioCfg();
-
 }
-
 
 
 /**
@@ -1587,29 +1583,17 @@ void portAdcCfg(uint8_t onoff)
 float portGetAdcVol(ADC_SingleChannelTypeDef channel)
 {
     float value;
-    float vol;
     ADC_ChannelCfg(channel);
-    DelayUs(1);
     ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_0);
+    ADC_ExcutSingleConver();
     value = (ADC_ExcutSingleConver() / 2048.0) * 1.05;
     if (value >= 2.0)
     {
         ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_1_2);
+        ADC_ExcutSingleConver();
         value = (ADC_ExcutSingleConver() / 1024.0 - 1) * 1.05;
     }
-    for (uint8_t i = 0; i < 5; i++)
-    {
-        DelayUs(10);
-        ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_0);
-        value += (ADC_ExcutSingleConver() / 2048.0) * 1.05;
-        if (value >= 2.0)
-        {
-            ADC_ExtSingleChSampInit(SampleFreq_8, ADC_PGA_1_2);
-            value = (ADC_ExcutSingleConver() / 1024.0 - 1) * 1.05;
-        }
-    }
-    vol = value / 5;
-    return vol;
+    return value;
 }
 
 /**
@@ -1667,7 +1651,7 @@ uint32_t portUpdateStep(void)
 {
 	dynamicParam.step += getStep() - sysinfo.lastsetp;
 	sysinfo.lastsetp = getStep();
-	LogPrintf(DEBUG_ALL, "portUpdateStep==>%d", dynamicParam.step);
+	//LogPrintf(DEBUG_ALL, "portUpdateStep==>%d", dynamicParam.step);
 	return dynamicParam.step;
 }
 

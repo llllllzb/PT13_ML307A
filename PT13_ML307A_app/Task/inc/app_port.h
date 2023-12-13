@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "config.h"
 
-#define APPUSART0_BUFF_SIZE 1024
+#define APPUSART0_BUFF_SIZE 768
 #define APPUSART1_BUFF_SIZE 10
 #define APPUSART2_BUFF_SIZE 128
 #define APPUSART3_BUFF_SIZE 512
@@ -70,6 +70,7 @@
 #define SPKPWR_PIN		GPIO_Pin_11		//PA11
 #define SPKPWR_ON		GPIOA_SetBits(SPKPWR_PIN)
 #define SPKPWR_OFF		GPIOA_ResetBits(SPKPWR_PIN)
+
 
 #define VCARD_ADCPIN	GPIO_Pin_12
 #define ADC_CHANNEL		CH_EXTIN_2

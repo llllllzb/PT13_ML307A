@@ -72,7 +72,6 @@ typedef struct
     uint8_t ttsPlayNow				: 1;
     uint8_t inWifiFlag				: 1;
     uint8_t petledOnoff				: 1;
-    uint8_t petspkOnoff				: 1;
     uint8_t uploadflag				: 1;
     uint8_t hbtFlag					: 1;
     uint8_t closeTTs				: 1;
@@ -122,7 +121,7 @@ typedef struct
 	uint8_t ldrIrqFlag				: 1;	/*LDR触发中断标志位*/
 	uint8_t ldrDarkCnt;	
 	
-	uint8_t safeAreaFlag			: 1;
+	uint8_t safeAreaFlag;
 	uint8_t noNetFlag				: 1;
 	uint8_t irqTick;
 	uint16_t mode4NoNetTick;
@@ -132,7 +131,8 @@ typedef struct
     uint8_t mode123Min;
     uint16_t mode123RunTick;
     uint8_t ttstick;
-    uint8_t ttsContent[60];
+    uint8_t ttsContent[61];
+    uint8_t ttsContentLen;
 	uint8_t mode123GpsFre;
 	uint8_t wifiscanCnt;
 	uint8_t moduleFsm;
@@ -140,6 +140,8 @@ typedef struct
 	uint16_t moduleWorkStatus;
 	uint8_t sockSuccess;
 	uint8_t masterSn[16];
+	uint8_t petSpkCnt;
+	uint8_t petSpkGap;
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

@@ -124,7 +124,8 @@ typedef struct cmdNode
 
 typedef struct ttslist
 {
-    char *tts;
+    uint8_t *tts;
+    uint8_t ttsLen;
     struct ttslist *next;
 } tts_fifo_s;
 
@@ -250,7 +251,7 @@ void stopCall(void);
 void callPhone(char *tel);
 void outputTTs(void);
 void addCmdTTS(tts_Chinese_e ttscmd);
-void addTTS(char *tts);
+void addTTS(uint8_t *tts, uint8_t ttslen);
 void  ttsVolumeCfg(uint8_t volume);
 void primarySockErrCallBack(void);
 

@@ -168,9 +168,15 @@ static bStatus_t appWriteAttrCB(uint16 connHandle, gattAttribute_t *pAttr,
         switch (uuid)
         {
             case APP_CHARACTERISTIC1_UUID:
-            	insParam.bleConhandle = connHandle;            	
-                instructionParser(pValue, len, BLE_MODE, &insParam);
-                bleProtocolParser(connHandle, pValue, len);
+            	insParam.bleConhandle = connHandle;
+            	if (pValue[0] != 0x0C)
+            	{
+                	instructionParser(pValue, len, BLE_MODE, &insParam);
+                }
+                else
+                {
+					bleProtocolParser(connHandle, pValue, len);
+                }
                 break;
             case GATT_CLIENT_CHAR_CFG_UUID:
                 ret = GATTServApp_ProcessCCCWriteReq(connHandle, pAttr, pValue, len,
@@ -262,10 +268,10 @@ void appPeripheralInit(void)
     u16Value = 0x0c80;    //3200*1.25=4000ms
     GAPRole_SetParameter(GAPROLE_MIN_CONN_INTERVAL, sizeof(uint16), &u16Value);
     //配置最短广播间隔
-    //unit:0.625ms*160=100ms
-    GAP_SetParamValue(TGAP_DISC_ADV_INT_MIN, 160);
+    //unit:0.625ms*1600=1000ms
+    GAP_SetParamValue(TGAP_DISC_ADV_INT_MIN, 1600);
     //配置最长广播间隔
-    GAP_SetParamValue(TGAP_DISC_ADV_INT_MAX, 160);
+    GAP_SetParamValue(TGAP_DISC_ADV_INT_MAX, 1600);
     //使能扫描应答通知
     GAP_SetParamValue(TGAP_ADV_SCAN_REQ_NOTIFY, FALSE);
     //添加服务
@@ -444,15 +450,6 @@ static tmosEvents appPeripheralEventProcess(tmosTaskID taskID, tmosEvents events
 	if (events & APP_PERIPHERAL_ONEMINUTE_EVENT)
 	{
 		/* 这个任务永不停止，所以systick放这里 */
-		sysinfo.sysTick++;
-		LogPrintf(DEBUG_ALL, "fsm:%d %x %x %x %x %x %x %x", sysinfo.runFsm, sysinfo.gpsRequest, 
-		sysinfo.alarmRequest, sysinfo.wifiExtendEvt,sysinfo.lbsRequest, sysinfo.netRequest, 
-		sysinfo.outBleFenceFlag, sysinfo.outWifiFenceFlag);
-		movingStatusCheck();
-		wifiCheckByStep();
-		BleFenceCheck();
-		updateModuleStatus();
-		    netRequestTask();
 		return events ^ APP_PERIPHERAL_ONEMINUTE_EVENT;
 	}
 	LogPrintf(DEBUG_ALL, "unknow event taskid:%d events:%d", taskID, events);
@@ -1184,6 +1181,7 @@ void bleGatewayDisconnDetect(void)
 		if ((sysinfo.sysTick - beaconInfoList[i].updateTick) >= CONNTECT_TIMEOUT_MAXMIN &&
 			beaconInfoList[i].sockFlag)
 		{
+			LogPrintf(DEBUG_BLE, "bleGateway disconnect timeout:%d", sysinfo.sysTick - beaconInfoList[i].updateTick);
 			appBeaconSockflagSet(0, i);
 			sysinfo.sockSuccess = 0;
 			tmos_memset(sysinfo.masterSn, 0, sizeof(sysinfo.masterSn));
@@ -1219,13 +1217,13 @@ void BleFenceCheck(void)
 		Contick    = 0;
 		disConTick = 0;
 		sysinfo.outBleFenceFlag = 0;
-		LogPrintf(DEBUG_ALL, "In ble gateway");
+		//LogPrintf(DEBUG_ALL, "In ble gateway");
 	}
 	/* 在手机蓝牙内 */
 	else if (isInsideBleFence())
 	{
 		disConTick = 0;
-		if (Contick++ >= 5)
+		if (Contick++ >= 10)
 		{
 			if (sysinfo.outBleFenceFlag)
 			{
@@ -1233,7 +1231,7 @@ void BleFenceCheck(void)
 				LogPrintf(DEBUG_BLE, "Dev enter ble fence");
 			}
 		}
-		LogPrintf(DEBUG_ALL, "in ble fence, Contick:%d", Contick);
+		//LogPrintf(DEBUG_ALL, "In ble fence, Contick:%d", Contick);
 	}
 //	if (sysinfo.outBleFenceFlag)
 //	{
@@ -1245,13 +1243,14 @@ void BleFenceCheck(void)
 	else 
 	{
 		Contick = 0;
-		LogPrintf(DEBUG_ALL, "out ble fence, disConTick:%d", disConTick);
-		if (disConTick++ >= 180)
+		//LogPrintf(DEBUG_ALL, "Out ble fence, disConTick:%d", disConTick);
+		if (disConTick++ >= 10)
 		{
 			if (sysinfo.outBleFenceFlag == 0)
 			{
 				sysinfo.outBleFenceFlag = 1;
 				LogPrintf(DEBUG_BLE, "Dev leave ble fence");
+				LogPrintf(DEBUG_BLE, "wifireq line:%d", __LINE__);
 				wifiRequestSet(DEV_EXTEND_OF_FENCE);				
 			}
 		}

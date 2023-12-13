@@ -110,6 +110,7 @@ void paramDefaultInit(uint8_t level)
     sysparam.range = 0x61;
     sysparam.smThrd = 0x60;
     sysparam.stepFliter = 0xA7;
+    sysparam.volume = 15;
     //appCreatePasswordBySn(dynamicParam.SN + 9);
     dynamicParamSaveAll();
     paramSaveAll();

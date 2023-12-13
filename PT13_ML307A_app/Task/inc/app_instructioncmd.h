@@ -58,6 +58,7 @@ typedef enum
     STEPPARAM_INS,
     SYSTEMSHUTDOWN_INS,
     VOLUME_INS,
+    SPORTS_INS,
 } INSTRUCTIONID;
 
 

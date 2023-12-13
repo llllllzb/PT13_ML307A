@@ -247,7 +247,7 @@ void outputNode(void)
             }
             else if (currentnode->currentcmd == MWIFISCANSTART_CMD)
             {
-				tickRange = 75;
+				tickRange = 10;
             }
             else
             {
@@ -774,11 +774,8 @@ void netConnectTask(void)
 			sendModuleCmd(CIMI_CMD, NULL);
 			sendModuleCmd(MCCID_CMD, NULL);
 			sendModuleCmd(MCFG_CMD, "ri,1");
-			
 			queryBatVoltage();
-             if (sysinfo.netRequest == NET_REQUEST_OFFLINE  || 
-             	sysinfo.netRequest == NET_REQUEST_WIFI_CTL ||
-             	sysinfo.netRequest == (NET_REQUEST_OFFLINE | NET_REQUEST_WIFI_CTL))//如果仅仅只有offline那就跳到offline状态
+            if (netRequestGet(NET_REQUEST_CONNECT_ONE | NET_REQUEST_KEEPNET_CTL | NET_REQUEST_ALARM_ONE) == 0)//如果仅仅只有offline那就跳到offline状态
             {
 				moduleSleepCtl(1);
 				changeProcess(OFFLINE_STATUS);
@@ -820,8 +817,9 @@ void netConnectTask(void)
         case NORMAL_STATUS:
             socketSchedule();
             queryRecvBuffer();
-            if (sysinfo.netRequest == NET_REQUEST_OFFLINE)
+			if (netRequestGet(NET_REQUEST_CONNECT_ONE | NET_REQUEST_KEEPNET_CTL | NET_REQUEST_ALARM_ONE) == 0)
             {
+            	
 				moduleSleepCtl(1);
 				changeProcess(OFFLINE_STATUS);
             }
@@ -829,7 +827,9 @@ void netConnectTask(void)
         case OFFLINE_STATUS:
         	/* 仅存在offline和wifi不会上网 */
 			if (sysparam.MODE != MODE4 ||
-			(sysinfo.netRequest != 0 && sysinfo.netRequest != NET_REQUEST_OFFLINE && sysinfo.netRequest != NET_REQUEST_WIFI_CTL && sysinfo.netRequest != (NET_REQUEST_WIFI_CTL | NET_REQUEST_OFFLINE)))
+				netRequestGet(NET_REQUEST_CONNECT_ONE) || 
+				netRequestGet(NET_REQUEST_KEEPNET_CTL) ||
+				netRequestGet(NET_REQUEST_ALARM_ONE))
 			{
 				gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
 				changeProcess(QIACT_STATUS);
@@ -1293,11 +1293,14 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 			numb = atoi(restore);
 			if (numb == 0 && wifiList.apcount == 0)
 			{
+				wifiRspSuccess();
 				if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_FENCE)
 				{
+					LogPrintf(DEBUG_BLE, "Wifi error, try again");
 					wifiRequestSet(DEV_EXTEND_OF_FENCE);	
-					wifiRspSuccess();
+					
 				}
+				
 			}
         	break;
         }
@@ -1346,7 +1349,6 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 				{
 				 	sysinfo.outWifiFenceFlag = 1;
 				}
-
             }
             else
             {
@@ -1354,11 +1356,6 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 				if (sysinfo.outWifiFenceFlag)
 				{
 					sysinfo.outWifiFenceFlag = 0;
-					if (sysinfo.safeAreaFlag == 0)
-					{
-						alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
-						sysinfo.safeAreaFlag = 1;
-					}
 				}
             }
         }
@@ -2407,6 +2404,7 @@ int socketSendData(uint8_t link, uint8_t *data, uint16_t len)
         //链路未链接
         return 0;
     }
+    LogPrintf(DEBUG_ALL,"精准判断");
     sprintf(param, "%d,%d", link, len);
     sendModuleCmd(MIPSEND_CMD, param);
     createNode((char *)data, len, MIPSEND_CMD);
@@ -2970,11 +2968,11 @@ void addCmdTTS(tts_Chinese_e ttscmd)
 @note
 **************************************************/
 
-void addTTS(char *tts)
+void addTTS(uint8_t *tts, uint8_t ttslen)
 {
     tts_fifo_s *prv = NULL, *next = NULL;
     uint8_t len;
-    if (tts == NULL || strlen(tts) == 0)
+    if (tts == NULL || ttslen == 0)
     {
 
         LogMessage(DEBUG_ALL, "add tts fail");
@@ -2982,7 +2980,7 @@ void addTTS(char *tts)
     }
 
 	netRequestSet(NET_REQUEST_TTS_CTL);
-    len = strlen(tts) + 1;
+    len = ttslen + 1;
     if (ttsHead == NULL)
     {
         ttsHead = malloc(sizeof(tts_fifo_s));
@@ -2998,9 +2996,9 @@ void addTTS(char *tts)
             ttsHead = NULL;
             return;
         }
-        tmos_memcpy(ttsHead->tts, tts, strlen(tts));
-        ttsHead->tts[len - 1] = 0;
-        LogMessage(DEBUG_ALL, "add tts success");
+        tmos_memcpy(ttsHead->tts, tts, len);
+        ttsHead->tts[len - 1] = '\0';
+        LogPrintf(DEBUG_ALL, "1add tts success==>tts:[%s], len:%d %d", tts, strlen(tts), len);
     }
     else
     {
@@ -3017,17 +3015,16 @@ void addTTS(char *tts)
             return;
         }
         next->next = NULL;
-        next->tts = malloc(sizeof(tts_fifo_s));
+        next->tts = malloc(len);
         if (next->tts == NULL)
         {
             free(next);
             return;
         }
-        tmos_memcpy(next->tts, tts, strlen(tts));
-        next->tts[len - 1] = 0;
+        tmos_memcpy(next->tts, tts, len);
+        next->tts[len - 1] = '\0';
         prv->next = next;
-
-        LogMessage(DEBUG_ALL, "add tts success");
+        LogPrintf(DEBUG_ALL, "2add tts success==>tts:[%s], len:%d %d", tts, strlen(tts), len);
     }
 }
 
@@ -3040,7 +3037,7 @@ void addTTS(char *tts)
 
 void outputTTs(void)
 {
-    tts_fifo_s *next;
+    tts_fifo_s *next = NULL;
     static uint8_t runTick = 0;
     /* 如果关机,要判断是否是必须开机来发TTS */
     if (netRequestGet(NET_REQUEST_TTS_CTL) == 0)
@@ -3056,7 +3053,6 @@ void outputTTs(void)
     {
 		return;
     }
-    
     if (sysinfo.ttsPlayNow)
     {
         if (runTick++ >= 20)
@@ -3066,6 +3062,7 @@ void outputTTs(void)
         }
         return;
     }
+
 
     if (ttsHead == NULL)
     {
@@ -3079,14 +3076,20 @@ void outputTTs(void)
     	}
         return ;
     }
-    LogPrintf(DEBUG_ALL, "TTS==>[%s]", ttsHead->tts);
+    
+    //LogPrintf(DEBUG_ALL, "TTS==>[%s]", ttsHead->tts);
+//    for (uint8_t i= 0; i < 70; i++)
+//    {
+//		LogPrintf(DEBUG_ALL, "tts[%d]=%x", i, ttsHead->tts[i]);
+//    }
     sysinfo.ttsPlayNow = 1;
     sysinfo.ttstick = 20;
     playtts(ttsHead->tts);
     next = ttsHead->next;
+    free(ttsHead->tts);
     free(ttsHead);
     ttsHead = next;
-    if (ttsHead == NULL)
+    if (ttsHead == NULL && sysinfo.petSpkCnt == 0)
     {
         LogMessage(DEBUG_ALL, "TTS==>Done!!!");
         netRequestClear(NET_REQUEST_TTS_CTL);

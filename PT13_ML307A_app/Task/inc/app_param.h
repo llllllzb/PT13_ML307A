@@ -22,7 +22,7 @@
 #define BOOT_PARAM_FLAG         0xB0
 #define OTA_PARAM_FLAG          0x1A
 
-#define EEPROM_VERSION									"PT13_ML307A_V2.0.2"
+#define EEPROM_VERSION									"PT13_ML307A_V2.0.4"
 
 
 #define JT808_PROTOCOL_TYPE			8

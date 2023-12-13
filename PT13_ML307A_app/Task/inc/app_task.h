@@ -2,10 +2,11 @@
 #define APP_TASK
 #include <stdint.h>
 #include "app_central.h"
-#define SYSTEM_LED_RUN					0X01
-#define SYSTEM_LED_NETOK				0X02
-#define SYSTEM_LED_GPSOK				0X04	//普通GPS
-#define SYSTEM_LED_BLE					0x08
+#define SYSTEM_LEN_IDLE					0X01	//待机状态，关闭模组
+#define SYSTEM_LED_RUN					0X02	//开启模组
+#define SYSTEM_LED_NETOK				0X04
+#define SYSTEM_LED_GPSOK				0X08	//普通GPS
+#define SYSTEM_LED_BLE					0X10
 
 
 #define GPSLED1							0
@@ -26,13 +27,18 @@
 #define NET_REQUEST_OFFLINE				0X00000008	//*该标志表示模组开启但不联网(该状态与NET_REQUEST_KEEPNET_CTL互斥)
 #define NET_REQUEST_TTS_CTL				0X00000010	//发送TTS语音
 #define NET_REQUEST_SHUTDOWN_TTS		0X00000020	//发送关机语音
-#define NET_REQUEST_ALARM_ONE			0X00000040  //开机上报一次报警
+#define NET_REQUEST_ALARM_ONE			0X00000000  //开机上报一次报警//暂时先不用
 
 #define NET_REQUEST_ALL					0xFFFFFFFF
 
 /* 模组工作状态 */
 #define NET_STATUS_CLOSE				0x0001		//该状态下
 #define NET_STATUS_OPEN					0x0002		//
+
+/* 安全区域状态 */
+#define SAFE_AREA_OUT					0
+#define SAFE_AREA_IN					1
+#define SAFE_AREA_UNKNOW				2
 
 
 
@@ -45,8 +51,8 @@
 #define ALARM_RAPIDRIGHT_REQUEST		0X0040
 #define ALARM_RAPIDLEFT_REQUEST			0X0080
 #define ALARM_SOS_REQUEST				0X0100
-#define ALARM_ENTERSAFEAREA_REQUEST		0x0200
-#define ALARM_LEAVESAFEAREA_REQUEST		0x0400
+#define ALARM_ENTERSAFEAREA_REQUEST		0//0x0200//暂时先不用
+#define ALARM_LEAVESAFEAREA_REQUEST		0//0x0400//暂时先不用
 #define ALARM_BLEALARM_REQUEST			0x0800
 
 

@@ -403,15 +403,15 @@ static void sendTcpDataDebugShow(uint8_t link, char *txdata, int txlen)
 {
     int debuglen;
     char srclen;
-    char senddata[280] = { 0 };
+    char senddata[300] = { 0 };
     debuglen = txlen > 128 ? 128 : txlen;
+    LogPrintf(DEBUG_ALL, "txlen:%d, debuglen:%d", txlen, debuglen);
     sprintf(senddata, "Socket[%d] Send:", link);
     srclen = tmos_strlen(senddata);
     byteToHexString((uint8_t *)txdata, (uint8_t *)senddata + srclen, (uint16_t) debuglen);
     senddata[srclen + debuglen * 2] = 0;
+    LogPrintf(DEBUG_ALL, "txlen:%d, debuglen:%d %d", txlen, debuglen, srclen + debuglen * 2);
     LogMessage(DEBUG_ALL, senddata);
-
-
 }
 
 
@@ -1062,7 +1062,7 @@ void protocolSend(uint8_t link, PROTOCOLTYPE protocol, void *param)
     gpsinfo_s *gpsinfo;
     insParam_s *insParam;
     recordUploadInfo_s *recInfo = NULL;
-    char txdata[500] = { 0 };
+    char txdata[350] = { 0 };
     int txlen = 0;
     char *debugP;
 

@@ -58,6 +58,7 @@ const instruction_s insCmdTable[] =
     {STEPPARAM_INS, "STEPPARAM"},
     {SYSTEMSHUTDOWN_INS, "SYSTEMSHUTDOWN"},
     {VOLUME_INS, "VOLUME"},
+    {SPORTS_INS, "SPORTS"},
 };
 
 static insMode_e mode123;
@@ -191,7 +192,7 @@ static void doParamInstruction(ITEM *item, char *message)
             break;
        	case MODE4:
 			sprintf(message + strlen(message), "Mode4: wifi %dmin, %dstep, %dstep;", 
-			sysparam.MODE,sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
+			sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
        		break;
     }
 
@@ -223,7 +224,11 @@ static void doStatusInstruction(ITEM *item, char *message)
     sprintf(message + strlen(message), "Gsensor=%s;", read_gsensor_id() == 0x13 ? "OK" : "ERR");
     sprintf(message + strlen(message), "RUNNINGTIME=%dmin;", dynamicParam.runningtime / 60);
     sprintf(message + strlen(message), "STEP=%d;", dynamicParam.step);
-    sprintf(message + strlen(message), "SAFEAREA=%s", sysinfo.safeAreaFlag ? "IN" : "OUT");
+    if (sysinfo.safeAreaFlag == SAFE_AREA_UNKNOW)
+    	sprintf(message + strlen(message), "SAFEAREA=Unknow");
+    else if (sysinfo.safeAreaFlag == SAFE_AREA_IN)
+    	sprintf(message + strlen(message), "SAFEAREA=In");
+    else sprintf(message + strlen(message), "SAFEAREA=Out");
 }
 
 
@@ -567,32 +572,17 @@ void do123Instruction(ITEM *item, insMode_e mode, void *param)
 //	    }
 //	    else
 //	    {
-//	        lbsRequestSet(DEV_EXTEND_OF_MY);
-//	        wifiRequestSet(DEV_EXTEND_OF_MY);
-        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-        LogMessage(DEBUG_ALL, "LBS ,WIFI and GPS reporting");
+	        lbsRequestSet(DEV_EXTEND_OF_MY);
+	        wifiRequestSet(DEV_EXTEND_OF_MY);
+	        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
+	        LogMessage(DEBUG_ALL, "LBS ,WIFI and GPS reporting");
 //	    }
 	    netRequestSet(NET_REQUEST_CONNECT_ONE);
 	    sysinfo.flag123 = 1;
 	    save123InstructionId();
 	    
     }
-    else
-    {
-    	sysinfo.mode123RunTick = 0;
-    	sysinfo.mode123Min = atoi(item->item_data[1]);
-    	sysinfo.mode123GpsFre = atoi(item->item_data[2]);
-    	if (sysinfo.mode123GpsFre == 0)
-    	{
-			sysinfo.mode123GpsFre = 10;
-    	}
-		lbsRequestSet(DEV_EXTEND_OF_MY);
-		gpsRequestSet(GPS_REQUEST_123_CTL | GPS_REQUEST_UPLOAD_ONE);
-		netRequestSet(NET_REQUEST_KEEPNET_CTL);
-		sprintf(message, "Device work %d min, and acquisition positon every %d seconds", sysinfo.mode123Min, sysinfo.mode123GpsFre);
-		LogMessageWL(DEBUG_ALL, message, strlen(message));
-		sendMsgWithMode((uint8_t *)message, strlen(message), mode123, &param123);
-    }
+
 }
 
 
@@ -1517,27 +1507,36 @@ static void doPetSpkInstruction(ITEM *item, char *message)
 {
 	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
 	{
-		sprintf(message, "Pet speaker is %s", sysinfo.petspkOnoff ? "On" : "Off");
+		sprintf(message, "Pet speaker content %s", sysinfo.ttsContent);
 	}
 	else
 	{
-		if (atoi(item->item_data[1]) == 0)
+		if (item->item_data[1][0] != 0)
 		{
-			sysinfo.petspkOnoff = 0;
-			netRequestClear(NET_REQUEST_TTS_CTL);
+			sysinfo.petSpkCnt = atoi(item->item_data[1]);
 		}
-		else
+		if (item->item_data[2][0] != 0)
 		{
-			sysinfo.petspkOnoff = 1;
-			netRequestSet(NET_REQUEST_TTS_CTL);
+			sysinfo.petSpkGap = atoi(item->item_data[2]);
+		}
+		if (sysinfo.petSpkCnt == 0)
+		{
+			sysinfo.petSpkCnt = 1;
+		}
+		if (sysinfo.petSpkGap == 0)
+		{
+			sysinfo.petSpkGap = 5;
 		}
 		tmos_memset(sysinfo.ttsContent, 0, 60);
-		sprintf(message, "%s the pet speaker", sysinfo.petspkOnoff ? "Open" : "Close");
-		if (sysinfo.petspkOnoff)
-		{
-			strncpy(sysinfo.ttsContent, item->item_data[2], 60);
-			sprintf(message + strlen(message), " and play content is %s", sysinfo.ttsContent);
-		}
+		sprintf(message, "Open the pet speaker %d times every %d seconds", sysinfo.petSpkCnt, sysinfo.petSpkGap);
+
+		uint8_t len = strlen(item->item_data[3]) > 60 ? 60 : strlen(item->item_data[3]);
+		changeHexStringToByteArray(sysinfo.ttsContent, item->item_data[3], len / 2);
+		sysinfo.ttsContent[len / 2] = 0;
+		sysinfo.ttsContentLen = len / 2;
+		LogPrintf(DEBUG_ALL, "Cnt :%d Gap:%d buff:%s  %s,len:%d %d", sysinfo.petSpkCnt, sysinfo.petSpkGap, sysinfo.ttsContent, item->item_data[3], len, strlen(item->item_data[3]));
+		netRequestSet(NET_REQUEST_TTS_CTL);
+		sprintf(message + strlen(message), " and play content is[%s] ,len is %d", sysinfo.ttsContent, sysinfo.ttsContentLen);
 	}	
 }
 
@@ -1619,6 +1618,26 @@ static void doVolumeInstruction(ITEM *item, char *message)
         sprintf(message, "Update volume to %d", sysparam.volume);
         paramSaveAll();
     }
+}
+
+
+static void doSportsInstruction(ITEM *item, char *message)
+{
+    sysinfo.mode123RunTick = 0;
+	sysinfo.mode123Min = atoi(item->item_data[1]);
+	sysinfo.mode123GpsFre = atoi(item->item_data[2]);
+	if (sysinfo.mode123Min == 0)
+	{
+		sysinfo.mode123Min = 3;
+	}
+	if (sysinfo.mode123GpsFre == 0)
+	{
+		sysinfo.mode123GpsFre = 10;
+	}
+	lbsRequestSet(DEV_EXTEND_OF_MY);
+	gpsRequestSet(GPS_REQUEST_123_CTL | GPS_REQUEST_UPLOAD_ONE);
+	netRequestSet(NET_REQUEST_KEEPNET_CTL);
+	sprintf(message, "Device gps work %d min, and acquisition positon every %d seconds", sysinfo.mode123Min, sysinfo.mode123GpsFre);
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -1754,6 +1773,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
        	case VOLUME_INS:
        	    doVolumeInstruction(item, message);
        	    break;
+       	case SPORTS_INS:
+			doSportsInstruction(item, message);
+       		break;
         default:
             if (mode == SMS_MODE || mode == BLE_MODE)
             {
