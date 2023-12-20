@@ -328,8 +328,8 @@ static void doModeInstruction(ITEM *item, char *message)
     {
     	if (sysparam.MODE == MODE4)
     	{
-			sprintf(message, "Mode%d wifi %dmin, %dstep, %dstep;", 
-			sysparam.MODE, sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
+			sprintf(message, "Mode%d gpsgap %d min, wifi %dmin, %dstep, %dstep;", 
+			sysparam.MODE, sysparam.mode4GapMin, sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
 			
     	}
     	else
@@ -1667,7 +1667,7 @@ static void doSportsInstruction(ITEM *item, char *message)
 	}
 	lbsRequestSet(DEV_EXTEND_OF_MY);
 	gpsRequestSet(GPS_REQUEST_123_CTL | GPS_REQUEST_UPLOAD_ONE);
-	netRequestSet(NET_REQUEST_KEEPNET_CTL);
+	netRequestSet(NET_REQUEST_CONNECT_ONE);
 	sprintf(message, "Device gps work %d min, and acquisition positon every %d seconds", sysinfo.mode123Min, sysinfo.mode123GpsFre);
 }
 
@@ -1697,17 +1697,23 @@ static void doPetbellInstruction(ITEM *item, char *message)
 				else
 				{
 					if (sysinfo.petBellOnoff != 0)
+					{
 						netRequestSet(NET_REQUEST_TTS_CTL);
+						sprintf(message, "Enable pet bell playing music[%d] %d times success", sysparam.musicNum, sysinfo.petBellOnoff);
+					}
+					else 
+					{
+						netRequestClear(NET_REQUEST_TTS_CTL);
+						strcpy(message, "Disable pet bell");
+					}
 					paramSaveAll();
-					sprintf(message, "Enable pet bell playing music[%d] %d times success", sysparam.musicNum, sysinfo.petBellOnoff);
+					
 				}
 			}
 			else
 			{
 				sprintf(message, "Please enter true music number");
-			}
-
-			
+			}			
 		}
 	}
 }

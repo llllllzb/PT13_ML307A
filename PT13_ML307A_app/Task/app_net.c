@@ -75,6 +75,7 @@ const atCmd_s cmdtable[] =
 	{MTTSSTOP_CMD, "AT+MTTSSTOP"},
 	{MAUDPLCFG_CMD, "AT+MAUDPLCFG"},
 	{MAUDPLFILE_CMD, "AT+MAUDPLFILE"},
+	{MAUDPLSTOP_CMD, "AT+MAUDPLSTOP"},
 	{MHTTPDLFILE_CMD, "AT+MHTTPDLFILE"},
 	{MFLIST_CMD, "AT+MFLIST"},
 };
@@ -1270,6 +1271,29 @@ static uint8_t wifiFenceCheck(WIFIINFO *wifiList)
 有时候会仅返回以下这个信息
 +MWIFISCANINFO: 0
 
++MWIFISCANINFO: 1,,"EC41180C8209",,-31,5,
++MWIFISCANINFO: 2,,"DC9FDB1C1D76",,-50,11,
++MWIFISCANINFO: 3,,"4022301AF801",,-59,6,
++MWIFISCANINFO: 4,,"F88C21A2C6E9",,-61,1,
++MWIFISCANINFO: 5,,"021394425130",,-61,6,
++MWIFISCANINFO: 6,,"500FF5511AEB",,-61,13,
++MWIFISCANINFO: 7,,"1409B495946D",,-62,11,
++MWIFISCANINFO: 8,,"ACCB51AE14E1",,-69,2,
++MWIFISCANINFO: 9,,"206BE7F0F9
++MWIFI,,"A6E57CA1785A",,-87,1,
++MWIFISCANINFO: 0
+
+[10:18:14] ---<<<---
+[10:18:14] WIFI(1):[EC41180C8209]
+[10:18:14] WIFI(2):[DC9FDB1C1D76]
+[10:18:14] WIFI(3):[4022301AF801]
+[10:18:14] WIFI(4):[F88C21A2C6E9]
+[10:18:14] WIFI(5):[021394425130]
+[10:18:14] WIFI(6):[500FF5511AEB]
+[10:18:14] WIFI(7):[1409B495946D]
+[10:18:14] WIFI(8):[ACCB51AE14E1]
+
+
 **************************************************/
 static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 {
@@ -1311,11 +1335,15 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 				/* 表示本次扫描为空,再扫一次 */
 				if (wifiList.apcount == 0)
 				{
+					LogPrintf(DEBUG_BLE, "Wifi Null, try again:%d", sysinfo.wifiScanCnt);
 					if (sysinfo.wifiScanCnt > 0)
 					{
 						wifiRequestSet(DEV_EXTEND_OF_FENCE);
-						LogPrintf(DEBUG_BLE, "Wifi Null, try again:%d", sysinfo.wifiScanCnt);
 						sysinfo.wifiScanCnt--;
+					}
+					else
+					{
+						sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_FENCE;
 					}
 					return;
 				}
@@ -2698,7 +2726,7 @@ void moduleGetLbs(void)
 
 void moduleGetWifiScan(void)
 {
-    sendModuleCmd(MWIFISCANSTART_CMD, "3");
+    sendModuleCmd(MWIFISCANSTART_CMD, "3,60");
 }
 
 /**************************************************
@@ -3090,6 +3118,18 @@ void plalAudio(uint8_t musicNum)
 //    }
     sprintf(buff, "/etc/http_file/Music%d.mp3", musicNum);
     sendModuleCmd(MAUDPLFILE_CMD, buff);
+}
+
+/**************************************************
+@bref		终止audio语音
+@param
+@return
+@note
+**************************************************/
+
+void stopAudio(void)
+{
+	sendModuleCmd(MAUDPLSTOP_CMD, NULL);
 }
 
 /**************************************************

@@ -329,6 +329,7 @@ void parse_TXT(GPSITEM *item)
 	{
 		ephemeriscnt = atoi(item->item_data[5]);
 	}
+	//LogPrintf(DEBUG_ALL, "gpsvaild:%d ephemeriscnt:%d", gpsvaild, ephemeriscnt);
 	if ((gpsvaild == 3 || gpsvaild == 7) && ephemeriscnt >= 8)
 	{
 		sysinfo.ephemerisFlag = 1;

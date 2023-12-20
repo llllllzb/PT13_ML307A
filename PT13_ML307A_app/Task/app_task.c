@@ -652,7 +652,7 @@ static void gpsUplodOnePointTask(void)
             runtick = 0;
             uploadtick = 0;
             gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
-            if (netRequestGet(NET_REQUEST_CONNECT_ONE))
+            if (netRequestGet(NET_REQUEST_CONNECT_ONE) && gpsRequestGet(GPS_REQUEST_123_CTL) == 0)
             {
 				netRequestClear(NET_REQUEST_CONNECT_ONE);
             }
@@ -674,7 +674,7 @@ static void gpsUplodOnePointTask(void)
         protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
         jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
         gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
-		if (netRequestGet(NET_REQUEST_CONNECT_ONE))
+		if (netRequestGet(NET_REQUEST_CONNECT_ONE) && gpsRequestGet(GPS_REQUEST_123_CTL) == 0)
 		{
 			netRequestClear(NET_REQUEST_CONNECT_ONE);
 		}
@@ -2078,6 +2078,7 @@ static void sysAutoReq(void)
                 lbsRequestSet(DEV_EXTEND_OF_MY);
    	 			gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
                 netRequestSet(NET_REQUEST_CONNECT_ONE);
+                LogPrintf(DEBUG_ALL, "mode 4 gps upload");
                 if (sysinfo.kernalRun == 0)
                 {
                     volCheckRequestSet();
@@ -2477,6 +2478,10 @@ static void wifiRequestTask(void)
     {
     	return;
    	}
+   	if (sysinfo.agpsRequest)
+   	{
+		return;
+   	}
     sysinfo.wifiRequest = 0;
     startTimer(30, moduleGetWifiScan, 0);
     wifiTimeOutId = startTimer(620, wifiTimeout, 0);
@@ -2735,6 +2740,10 @@ static void mode123UploadTask(void)
             {
 				LogPrintf(DEBUG_ALL, "补传完成");
 				gpsRequestClear(GPS_REQUEST_123_CTL);
+				if (netRequestGet(NET_REQUEST_CONNECT_ONE) && gpsRequestGet(GPS_REQUEST_123_CTL) == 0)
+	            {
+					netRequestClear(NET_REQUEST_CONNECT_ONE);
+	            }
 				//resetSafeArea();
             }
         }
@@ -2742,6 +2751,10 @@ static void mode123UploadTask(void)
         {
 			//resetSafeArea();
 			gpsRequestClear(GPS_REQUEST_123_CTL);
+			if (netRequestGet(NET_REQUEST_CONNECT_ONE) && gpsRequestGet(GPS_REQUEST_123_CTL) == 0)
+            {
+				netRequestClear(NET_REQUEST_CONNECT_ONE);
+            }
         }
 		return;
 	}
@@ -3089,7 +3102,8 @@ void updateModuleStatus(void)
 
 	/* 如果模组不开启,顺便关闭GPS */
 	if (netRequestGet(NET_REQUEST_CONNECT_ONE) == 0 && 
-		netRequestGet(NET_REQUEST_KEEPNET_CTL) == 0)
+		netRequestGet(NET_REQUEST_KEEPNET_CTL) == 0 &&
+		netRequestGet(NET_REQUEST_ALARM_ONE) == 0)
 	{
 		if (gpsRequestGet(GPS_REQUEST_ALL))
 		{
@@ -3178,6 +3192,11 @@ void petBellTask(void)
 	if (sysinfo.petBellOnoff == 0)
 	{
 		fsm = 0;
+		if (sysinfo.petbellPlaying)
+		{
+			sysinfo.petbellPlaying = 0;
+			stopAudio();
+		}
 		return;
 	}
 	if (sysinfo.petSpkCnt > 0 || sysinfo.ttsPlayNow)

@@ -406,12 +406,12 @@ static void sendTcpDataDebugShow(uint8_t link, char *txdata, int txlen)
     char srclen;
     char senddata[300] = { 0 };
     debuglen = txlen > 128 ? 128 : txlen;
-    LogPrintf(DEBUG_ALL, "txlen:%d, debuglen:%d", txlen, debuglen);
+    //LogPrintf(DEBUG_ALL, "txlen:%d, debuglen:%d", txlen, debuglen);
     sprintf(senddata, "Socket[%d] Send:", link);
     srclen = tmos_strlen(senddata);
     byteToHexString((uint8_t *)txdata, (uint8_t *)senddata + srclen, (uint16_t) debuglen);
     senddata[srclen + debuglen * 2] = 0;
-    LogPrintf(DEBUG_ALL, "txlen:%d, debuglen:%d %d", txlen, debuglen, srclen + debuglen * 2);
+    //LogPrintf(DEBUG_ALL, "txlen:%d, debuglen:%d %d", txlen, debuglen, srclen + debuglen * 2);
     LogMessage(DEBUG_ALL, senddata);
 }
 

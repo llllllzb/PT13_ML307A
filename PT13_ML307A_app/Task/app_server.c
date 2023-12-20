@@ -277,7 +277,7 @@ void privateServerConnTask(void)
             {
                 privateServerChangeFsm(SERV_LOGIN);
                 privateServConn.loginCount++;
-                privateServerReconnect();
+                
                 if (privateServConn.loginCount >= 3)
                 {
                     privateServConn.loginCount = 0;
@@ -511,10 +511,6 @@ static void hiddenServerConnTask(void)
             if (hiddenServConn.heartbeattick % sysparam.heartbeatgap == 0)
             {
                 hiddenServConn.heartbeattick = 0;
-//                if (timeOutId == -1)
-//                {
-//                    timeOutId = startTimer(80, moduleRspTimeout, 0);
-//                }
                 protocolInfoResiter(getBatteryLevel(), sysinfo.outsidevoltage > 5.0 ? sysinfo.outsidevoltage : sysinfo.insidevoltage,
                                     dynamicParam.startUpCnt, dynamicParam.runTime);
                 protocolSend(HIDDEN_LINK, PROTOCOL_13, NULL);

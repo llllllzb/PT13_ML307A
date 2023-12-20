@@ -73,6 +73,7 @@ typedef enum
     MTTSSTOP_CMD,
     MAUDPLCFG_CMD,
     MAUDPLFILE_CMD,
+    MAUDPLSTOP_CMD,
     MHTTPDLFILE_CMD,
     MFLIST_CMD,
 } atCmdType_e;
@@ -259,6 +260,7 @@ void addTTS(uint8_t *tts, uint8_t ttslen);
 void  ttsVolumeCfg(uint8_t volume);
 void primarySockErrCallBack(void);
 void plalAudio(uint8_t musicNum);
+void stopAudio(void);
 
 
 #endif
