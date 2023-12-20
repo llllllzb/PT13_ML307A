@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 
-#define WIFIINFOMAX		10
+#define WIFIINFOMAX		20
 typedef enum{
 	PROTOCOL_01,//µÇÂ¼
 	PROTOCOL_12,//¶¨Î»
@@ -97,6 +97,8 @@ void setInsId(void);
 
 uint8_t gpsRestoreUpload(void);
 
+void getLastInsid(void);
+void setLastInsid(void);
 
 
 void protocolSnRegister(char *sn);

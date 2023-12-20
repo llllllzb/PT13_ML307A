@@ -73,6 +73,8 @@ typedef enum
     MTTSSTOP_CMD,
     MAUDPLCFG_CMD,
     MAUDPLFILE_CMD,
+    MHTTPDLFILE_CMD,
+    MFLIST_CMD,
 } atCmdType_e;
 
 typedef enum
@@ -250,10 +252,13 @@ void moduleInit(void);
 void stopCall(void);
 void callPhone(char *tel);
 void outputTTs(void);
+void downloadAudioToFile(uint8_t *http, uint8_t fileNum);
+
 void addCmdTTS(tts_Chinese_e ttscmd);
 void addTTS(uint8_t *tts, uint8_t ttslen);
 void  ttsVolumeCfg(uint8_t volume);
 void primarySockErrCallBack(void);
+void plalAudio(uint8_t musicNum);
 
 
 #endif

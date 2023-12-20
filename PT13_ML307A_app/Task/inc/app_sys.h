@@ -22,7 +22,7 @@
 #define MODE23									6  //模式2的扩展，类似模式3
 
 #define ITEMCNTMAX	8
-#define ITEMSIZEMAX	60
+#define ITEMSIZEMAX	80
 
 #define ACCDETMODE0			0		//仅使用acc线
 #define ACCDETMODE1			1		//acc线优先，其次电压
@@ -77,6 +77,7 @@ typedef struct
     uint8_t closeTTs				: 1;
     uint8_t lbsExtendEvt;
     uint8_t wifiExtendEvt;
+    uint8_t wifiScanCnt;
     uint8_t ringWakeUpTick;
     uint8_t cmdTick;
     uint8_t runFsm;
@@ -134,7 +135,6 @@ typedef struct
     uint8_t ttsContent[61];
     uint8_t ttsContentLen;
 	uint8_t mode123GpsFre;
-	uint8_t wifiscanCnt;
 	uint8_t moduleFsm;
 	uint8_t outputLockTick;		//AT指令输出锁计时
 	uint16_t moduleWorkStatus;
@@ -142,6 +142,9 @@ typedef struct
 	uint8_t masterSn[16];
 	uint8_t petSpkCnt;
 	uint8_t petSpkGap;
+	uint8_t petBellOnoff;		//实际上是次数
+	uint8_t petbellPlaying			: 1;
+	uint8_t downloadNum;
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

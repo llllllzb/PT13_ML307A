@@ -59,6 +59,9 @@ typedef enum
     SYSTEMSHUTDOWN_INS,
     VOLUME_INS,
     SPORTS_INS,
+    PETBELL_INS,
+    DOWNLOADFILE_INS,
+    MUSICLIST_INS,
 } INSTRUCTIONID;
 
 
@@ -77,8 +80,10 @@ typedef struct
     uint8_t link;
     uint8_t bleConhandle;
 } insParam_s;
-
+extern insParam_s lastparam;
+extern int rspTimeOut;
 void instructionParser(uint8_t *str, uint16_t len, insMode_e mode, void *param);
 void dorequestSend123(void);
+void instructionRespone(char *message);
 
 #endif

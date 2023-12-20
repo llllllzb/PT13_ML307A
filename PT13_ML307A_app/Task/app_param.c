@@ -111,6 +111,7 @@ void paramDefaultInit(uint8_t level)
     sysparam.smThrd = 0x60;
     sysparam.stepFliter = 0xA7;
     sysparam.volume = 15;
+    sysparam.mode4GapMin = 60;
     //appCreatePasswordBySn(dynamicParam.SN + 9);
     dynamicParamSaveAll();
     paramSaveAll();
@@ -130,6 +131,11 @@ void paramInit(void)
 		sysparam.range = 0x61;
 	    sysparam.smThrd = 0x60;
 	    sysparam.stepFliter = 0xA7;
+	    sysparam.mode4GapMin = 60;
+	    sysparam.musicNum = 1;
+	    sysparam.musicfile[0] = 0;
+	    sysparam.musicfile[1] = 0;
+	    sysparam.musicfile[2] = 0;
 		paramSaveAll();
     }
     sysinfo.lowvoltage = sysparam.lowvoltage / 10.0;

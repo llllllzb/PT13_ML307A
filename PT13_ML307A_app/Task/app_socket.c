@@ -94,6 +94,7 @@ void socketDel(uint8_t sock)
 void socketDelAll(void)
 {
     uint8_t i;
+    LogPrintf(DEBUG_ALL, "Delete all socket");
     for (i = 0; i < SOCKET_LIST_MAX_SIZE; i++)
     {
         socketDel(i);

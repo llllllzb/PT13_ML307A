@@ -17,6 +17,7 @@
 
 static uint8_t instructionid[4];
 static uint8_t bleinstructionid[4];
+static uint8_t lastinstructionid[4];
 
 static uint8_t instructionid123[4];
 static uint16_t instructionserier = 0;
@@ -1373,6 +1374,37 @@ void setInsId(void)
     instructionid[2] = bleinstructionid[2];
     instructionid[3] = bleinstructionid[3];
 }
+
+/**************************************************
+@bref		保存上次指令ID
+@param
+@return
+@note
+**************************************************/
+
+void getLastInsid(void)
+{
+	lastinstructionid[0] = instructionid[0];
+	lastinstructionid[1] = instructionid[1];
+	lastinstructionid[2] = instructionid[2];
+	lastinstructionid[3] = instructionid[3];
+}
+
+/**************************************************
+@bref		设置上次指令ID
+@param
+@return
+@note
+**************************************************/
+
+void setLastInsid(void)
+{
+	instructionid[0] = lastinstructionid[0];
+	instructionid[1] = lastinstructionid[1];
+	instructionid[2] = lastinstructionid[2];
+	instructionid[3] = lastinstructionid[3];
+}
+
 /**************************************************
 @bref		注册sn号，用于登录
 @param

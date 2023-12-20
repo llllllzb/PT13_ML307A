@@ -20,9 +20,9 @@
 #define APP_DYNAMIC_PARAM_ADDR	0x2400 //实际是0x00070000+APP_DYNAMIC_PARAM_ADDR
 #define APP_PARAM_FLAG          0x2B
 #define BOOT_PARAM_FLAG         0xB0
-#define OTA_PARAM_FLAG          0x1A
+#define OTA_PARAM_FLAG          0x1C
 
-#define EEPROM_VERSION									"PT13_ML307A_V2.0.4"
+#define EEPROM_VERSION									"PT13_ML307A_V2.0.5"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -119,7 +119,8 @@ typedef struct
     uint8_t smThrd;
     uint8_t sysOnOff;
     uint8_t volume;
-
+    uint8_t musicNum;
+    uint8_t musicfile[3];
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/

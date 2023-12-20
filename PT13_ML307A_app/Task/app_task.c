@@ -693,7 +693,8 @@ void alarmRequestSet(uint16_t request)
 {
     LogPrintf(DEBUG_ALL, "alarmRequestSet==>0x%04X", request);
     sysinfo.alarmRequest |= request;
-    netRequestSet(NET_REQUEST_ALARM_ONE);
+    if (sysinfo.alarmRequest != 0)
+    	netRequestSet(NET_REQUEST_ALARM_ONE);
 }
 /**************************************************
 @bref		清除报警上送
@@ -2366,9 +2367,14 @@ void wifiTimeout(void)
 {
 	LogMessage(DEBUG_ALL, "wifiTimeout");
 	sysinfo.wifiExtendEvt = 0;
-	sysinfo.wifiscanCnt++;
 	wifiTimeOutId = -1;
 	netRequestClear(NET_REQUEST_WIFI_CTL);
+	if (sysinfo.wifiScanCnt > 0)
+	{
+		wifiRequestSet(DEV_EXTEND_OF_FENCE);
+		sysinfo.wifiScanCnt--;
+		LogPrintf(DEBUG_BLE, "Wifi timeout, try again:%d", sysinfo.wifiScanCnt);
+	}
 	if (sysinfo.runFsm == MODE_RUNING)
 		moduleReset();
 }
@@ -2400,14 +2406,19 @@ void wifiRspSuccess(void)
 
 void wifiRequestSet(uint8_t ext)
 {
+	/* 初次wifi请求 */
+	if ((sysinfo.wifiExtendEvt & DEV_EXTEND_OF_FENCE) == 0 && (ext & DEV_EXTEND_OF_FENCE))
+	{
+		sysinfo.wifiScanCnt = 1;
+		netRequestSet(NET_REQUEST_WIFI_CTL);
+	}
+	if (ext & DEV_EXTEND_OF_FENCE)
+    {
+		netRequestSet(NET_REQUEST_WIFI_CTL);
+    }
     sysinfo.wifiRequest = 1;
     sysinfo.wifiExtendEvt |= ext;
     LogPrintf(DEBUG_ALL, "wifiRequestSet==>0x%04x", ext);
-    if (ext & DEV_EXTEND_OF_FENCE)
-    {
-		sysinfo.wifiscanCnt = 0;
-		netRequestSet(NET_REQUEST_WIFI_CTL);
-    }
 }
 
 /**************************************************
@@ -2419,8 +2430,11 @@ void wifiRequestSet(uint8_t ext)
 
 void wifiRequestClear(uint8_t ext)
 {
-	sysinfo.wifiRequest = 0;
 	sysinfo.wifiExtendEvt &= ~ext;
+	if (sysinfo.wifiExtendEvt == 0)
+	{
+		sysinfo.wifiRequest = 0;
+	}
 }
 
 /**************************************************
@@ -2465,7 +2479,7 @@ static void wifiRequestTask(void)
    	}
     sysinfo.wifiRequest = 0;
     startTimer(30, moduleGetWifiScan, 0);
-    wifiTimeOutId = startTimer(380, wifiTimeout, 0);
+    wifiTimeOutId = startTimer(620, wifiTimeout, 0);
 }
 
 /**************************************************
@@ -2530,20 +2544,29 @@ static uint8_t getWakeUpState(void)
 		return 6;
     }
     //扫描wifi时,不休眠
-    if (wifiTimeOutId != -1)
+    if (sysinfo.wifiExtendEvt != 0)
     {
 		return 7;
     }
     //播放音频时,不休眠
-    if (sysinfo.petSpkCnt != 0)
+    if (netRequestGet(NET_REQUEST_TTS_CTL))
     {
 		return 8;
+    }
+//    if (sysinfo.petBellOnoff != 0 && sysinfo.petbellPlaying != 0)
+//    {
+//		return 9;
+//    }
+
+    if (rspTimeOut != -1)
+    {
+		return 11;
     }
     /*模式4不在offline或不在normal模式，不休眠*/
     if (sysparam.MODE == MODE4 && isModeRun() && 
     	(isModulePowerOff()== 0 && (isModuleOfflineStatus() == 0 && isModuleRunNormal() == 0)))//模组开着且在联网状态
     {
-    	return 7;
+    	return 12;
     }
     //非0 时强制不休眠
     return 0;
@@ -2835,6 +2858,12 @@ void lookForPetSpeakerTask(void)
 		tick = 0;
 		return;
 	}
+	if (sysinfo.petBellOnoff && sysinfo.petbellPlaying)
+	{
+		tick = 0;
+		LogPrintf(DEBUG_ALL, "Pet bell is playing, waiting..");
+		return;
+	}
 	if (strlen(sysinfo.ttsContent) == 0)
 	{
 		tick = 0;
@@ -3016,28 +3045,32 @@ void updateModuleStatus(void)
 	/* 出蓝牙 */
 	if (sysinfo.outBleFenceFlag)
 	{	
-		/* 且出WIFI */
-		if (sysinfo.outWifiFenceFlag)
+		//等待扫描结果
+		if (wifiRequestGet(DEV_EXTEND_OF_FENCE) == 0)
 		{
-			if (sysinfo.safeAreaFlag == SAFE_AREA_IN)
+			/* 且出WIFI */
+			if (sysinfo.outWifiFenceFlag)
 			{
-				LogPrintf(DEBUG_ALL, "离开安全围栏");
-				alarmRequestSet(ALARM_LEAVESAFEAREA_REQUEST);
+				if (sysinfo.safeAreaFlag == SAFE_AREA_IN)
+				{
+					LogPrintf(DEBUG_ALL, "离开安全围栏");
+					alarmRequestSet(ALARM_LEAVESAFEAREA_REQUEST);
+				}
+				sysinfo.safeAreaFlag = SAFE_AREA_OUT;
+				netRequestClear(NET_REQUEST_OFFLINE);
+				netRequestSet(NET_REQUEST_KEEPNET_CTL);
 			}
-			sysinfo.safeAreaFlag = SAFE_AREA_OUT;
-			netRequestClear(NET_REQUEST_OFFLINE);
-			netRequestSet(NET_REQUEST_KEEPNET_CTL);
-		}
-		/* 没出WIFI */
-		else
-		{
-			if (sysinfo.safeAreaFlag == SAFE_AREA_OUT)
+			/* 没出WIFI */
+			else
 			{
-				alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
+				if (sysinfo.safeAreaFlag == SAFE_AREA_OUT)
+				{
+					alarmRequestSet(ALARM_ENTERSAFEAREA_REQUEST);
+				}
+				sysinfo.safeAreaFlag = SAFE_AREA_IN;
+				netRequestClear(NET_REQUEST_KEEPNET_CTL);
+				netRequestSet(NET_REQUEST_OFFLINE);
 			}
-			sysinfo.safeAreaFlag = SAFE_AREA_IN;
-			netRequestClear(NET_REQUEST_KEEPNET_CTL);
-			netRequestSet(NET_REQUEST_OFFLINE);
 		}
 	}
 	/* 进蓝牙 */
@@ -3138,6 +3171,44 @@ void netRequestTask(void)
 }
 
 
+void petBellTask(void)
+{
+	static uint8_t fsm = 0;
+	
+	if (sysinfo.petBellOnoff == 0)
+	{
+		fsm = 0;
+		return;
+	}
+	if (sysinfo.petSpkCnt > 0 || sysinfo.ttsPlayNow)
+	{
+		LogPrintf(DEBUG_ALL, "TTS is playing, waiting..");
+		return;
+	}
+	if (netRequestGet(NET_REQUEST_TTS_CTL) == 0)
+    {
+		return;
+    }
+    if (isModulePowerOff())
+    {
+		return;
+    }
+    /* 设备开机正常 */
+    if (getModuleStatus() < CPIN_STATUS)
+    {
+		return;
+    }
+
+	//开机查询音频
+    if (sysinfo.petbellPlaying == 0)
+    {
+		plalAudio(sysparam.musicNum);
+		sysinfo.petbellPlaying = 1;
+    }
+    
+}
+
+
 /**************************************************
 @bref		1秒任务
 @param
@@ -3163,6 +3234,7 @@ void taskRunInSecond(void)
     lbsRequestTask();
     wifiRequestTask();
     lookForPetSpeakerTask();
+    petBellTask();
     autoSleepTask();
     sysModeRunTask();
     serverManageTask();
@@ -3294,12 +3366,14 @@ void myTaskPreInit(void)
     createSystemTask(outputNode, 2);
     createSystemTask(keyTask, 1);
     startTimer(10, openuart2, 0);
+    portSpkGpioCfg(0);
+
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
 	LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "SYS_GetLastResetSta:%x", SYS_GetLastResetSta());
    	addCmdTTS(TTS_STARTUP);
     /* 开机保持长连接，3分钟内有连着蓝牙就断网，没连着蓝牙就继续长连接 */
-	netRequestSet(NET_REQUEST_CONNECT_ONE);
+	netRequestSet(NET_REQUEST_KEEPNET_CTL);
 	/* 开机搜一次WIFI */
 	wifiRequestSet(DEV_EXTEND_OF_FENCE);
 	/* 开机定位一次 */
@@ -3307,7 +3381,7 @@ void myTaskPreInit(void)
 	/* 初始化状态 */
 	sysinfo.outBleFenceFlag  = 1;
 	sysinfo.outWifiFenceFlag = 1;
-	sysinfo.safeAreaFlag     = SAFE_AREA_UNKNOW;
+	sysinfo.safeAreaFlag     = SAFE_AREA_IN;
 }
 
 /**************************************************

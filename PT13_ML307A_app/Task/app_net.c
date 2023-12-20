@@ -75,6 +75,8 @@ const atCmd_s cmdtable[] =
 	{MTTSSTOP_CMD, "AT+MTTSSTOP"},
 	{MAUDPLCFG_CMD, "AT+MAUDPLCFG"},
 	{MAUDPLFILE_CMD, "AT+MAUDPLFILE"},
+	{MHTTPDLFILE_CMD, "AT+MHTTPDLFILE"},
+	{MFLIST_CMD, "AT+MFLIST"},
 };
 
 const tts_Chinese_s ttsTable[] = 
@@ -219,7 +221,7 @@ void outputNode(void)
     {
         nextnode = currentnode->nextnode;
         moduleState.cmd = currentnode->currentcmd;
-        if (moduleState.cmd == MTTSPLAY_CMD)
+        if (moduleState.cmd == MTTSPLAY_CMD || moduleState.cmd == MAUDPLFILE_CMD)
         {
             portSpkGpioCfg(1);
         }
@@ -366,7 +368,7 @@ void modulePowerOn(void)
     LogMessage(DEBUG_ALL, "modulePowerOn");
     moduleInit();
     sysinfo.moduleRstFlag = 1;
-    portUartCfg(APPUSART0, 1, 57600, moduleRecvParser);
+    portUartCfg(APPUSART0, 1, 115200, moduleRecvParser);
     DelayMs(1);
     POWER_ON;
     PWRKEY_HIGH;
@@ -375,6 +377,9 @@ void modulePowerOn(void)
     moduleState.gpsFileHandle = 1;
     moduleCtrl.scanMode = 0;
     moduleState.powerState = 1;
+    //清空正在播放标志
+    sysinfo.petbellPlaying = 0;
+    sysinfo.ttsPlayNow = 0;
     socketDelAll();
 }
 
@@ -415,7 +420,7 @@ void modulePowerOff(void)
 {
     LogMessage(DEBUG_ALL, "modulePowerOff");
     portModuleGpioCfg(1);
-    portUartCfg(APPUSART0, 0, 57600, NULL);
+    portUartCfg(APPUSART0, 0, 115200, NULL);
     POWER_OFF;
     RSTKEY_LOW;
     PWRKEY_LOW;
@@ -452,7 +457,8 @@ void moduleReset(void)
     POWER_OFF;
     PWRKEY_LOW;
     RSTKEY_LOW;
-    startTimer(20, modulePowerOn, 0);
+    portUartCfg(APPUSART0, 0, 115200, NULL);
+    startTimer(30, modulePowerOn, 0);
     socketDelAll();
 }
 
@@ -773,6 +779,7 @@ void netConnectTask(void)
 			sendModuleCmd(CGSN_CMD, "1");
 			sendModuleCmd(CIMI_CMD, NULL);
 			sendModuleCmd(MCCID_CMD, NULL);
+			sendModuleCmd(MFLIST_CMD, "\"/etc/http_file\"");
 			sendModuleCmd(MCFG_CMD, "ri,1");
 			queryBatVoltage();
             if (netRequestGet(NET_REQUEST_CONNECT_ONE | NET_REQUEST_KEEPNET_CTL | NET_REQUEST_ALARM_ONE) == 0)//如果仅仅只有offline那就跳到offline状态
@@ -1130,7 +1137,7 @@ static void cmgrParser(uint8_t *buf, uint16_t len)
         restore[index] = 0;
         LogPrintf(DEBUG_ALL, "Message:%s", restore);
         insparam.telNum = moduleState.messagePhone;
-
+		lastparam.telNum = moduleState.messagePhone;
         instructionParser((uint8_t *)restore, index, SMS_MODE, &insparam);
     }
 }
@@ -1278,7 +1285,6 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
     index = my_getstrindex((char *)rebuf, "+MWIFISCANINFO:", relen);
     if (index < 0)
     	return;
-    sysinfo.wifiscanCnt = 0;
     wifiList.apcount = 0;
     while (index >= 0)
     {
@@ -1286,23 +1292,61 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
         rebuf += index + 16;
         relen -= index + 16;
         index = getCharIndex(rebuf, relen, ',');
+        /* 检查wifi扫描完毕标志 +MWIFISCANINFO: 0 */
         if (index < 0 || index > 2)
         {
 			tmos_memcpy(restore, rebuf, 1);
 			restore[1] = 0;
 			numb = atoi(restore);
-			if (numb == 0 && wifiList.apcount == 0)
+			if (numb == 0 /*&& wifiList.apcount == 0*/)
 			{
+				
 				wifiRspSuccess();
-				if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_FENCE)
+				/* 表示本次wifi扫描结束,无需再做处理 */
+				if ((sysinfo.wifiExtendEvt & DEV_EXTEND_OF_FENCE) == 0)
 				{
-					LogPrintf(DEBUG_BLE, "Wifi error, try again");
-					wifiRequestSet(DEV_EXTEND_OF_FENCE);	
-					
+					break;
 				}
 				
+				/* 表示本次扫描为空,再扫一次 */
+				if (wifiList.apcount == 0)
+				{
+					if (sysinfo.wifiScanCnt > 0)
+					{
+						wifiRequestSet(DEV_EXTEND_OF_FENCE);
+						LogPrintf(DEBUG_BLE, "Wifi Null, try again:%d", sysinfo.wifiScanCnt);
+						sysinfo.wifiScanCnt--;
+					}
+					return;
+				}
+	            if (wifiFenceCheck(&wifiList) == 0)
+	            {
+	            	LogPrintf(DEBUG_ALL, "Not in wifi fence:%d", sysinfo.wifiScanCnt);
+	            	if (sysinfo.wifiScanCnt > 0)
+	            	{
+	            		wifiRequestSet(DEV_EXTEND_OF_FENCE);
+						sysinfo.wifiScanCnt--;
+	            	}
+	            	else
+	            	{
+						if (sysinfo.outWifiFenceFlag == 0)
+						{
+						 	sysinfo.outWifiFenceFlag = 1;
+						}
+						sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_FENCE;
+	            	}
+	            }
+	            else
+	            {
+	            	LogPrintf(DEBUG_ALL, "In wifi fence");
+					if (sysinfo.outWifiFenceFlag)
+					{
+						sysinfo.outWifiFenceFlag = 0;
+					}
+					sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_FENCE;
+	            }
+	            return;
 			}
-        	break;
         }
 		tmos_memcpy(restore, rebuf, index);
 		restore[index] = 0;
@@ -1334,17 +1378,18 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 			jt808UpdateWifiinfo(&wifiList);
             protocolSend(NORMAL_LINK, PROTOCOL_F3, &wifiList);
             jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
+            sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_MY;
         }
         if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_BLE)
         {
             protocolSend(BLE_LINK, PROTOCOL_F3, &wifiList);
+            sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_BLE;
         }
         if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_FENCE)
         {
             if (wifiFenceCheck(&wifiList) == 0)
             {
             	LogPrintf(DEBUG_ALL, "Not in wifi fence");
-
 				if (sysinfo.outWifiFenceFlag == 0)
 				{
 				 	sysinfo.outWifiFenceFlag = 1;
@@ -1357,10 +1402,9 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 				{
 					sysinfo.outWifiFenceFlag = 0;
 				}
+				sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_FENCE;
             }
         }
-        sysinfo.wifiExtendEvt = 0;
-        wifiRspSuccess();
     }
 
 }
@@ -1976,7 +2020,7 @@ static uint8_t miprdParser(uint8_t *buf, uint16_t len)
 	uint8_t link, reindex;
 	uint8_t *rebuf;
 	uint16_t relen;
-	uint8_t restore[512];
+	uint8_t restore[513];
 	uint16_t debuglen, rxlen;
 	rebuf = buf;
 	relen = len;
@@ -2055,8 +2099,10 @@ static uint8_t miprdParser(uint8_t *buf, uint16_t len)
 			LogMessage(DEBUG_ALL, "No follow-up data4");
 		}
 		debuglen = rxlen > 256 ? 256 : rxlen;
-		tmos_memcpy(restore, rebuf, debuglen);
-		restore[debuglen] = 0;
+		byteToHexString(rebuf, restore, debuglen);
+		restore[debuglen * 2] = 0;
+//		tmos_memcpy(restore, rebuf, debuglen);
+//		restore[debuglen] = 0;
 		LogPrintf(DEBUG_ALL, "TCP RECV (%d)[%d]:%s", link, rxlen, restore);
 		socketRecv(link, rebuf, rxlen);
 		rebuf += index;
@@ -2203,7 +2249,6 @@ void mttsplayParser(uint8_t *buf, uint16_t len)
     {
         sysinfo.ttsPlayNow = 0;
         LogMessage(DEBUG_ALL, "tts play done!!!");
-        portSpkGpioCfg(0);
 		if (sysinfo.closeTTs == 1)
 		{
 			LogPrintf(DEBUG_ALL, "发送完关机播报");
@@ -2211,9 +2256,193 @@ void mttsplayParser(uint8_t *buf, uint16_t len)
 			systemShutDown();
 		}
         sysinfo.closeTTs = 0;
+        if (sysinfo.petSpkCnt == 0 && sysinfo.petBellOnoff == 0)
+        {
+			netRequestClear(NET_REQUEST_TTS_CTL);
+			portSpkGpioCfg(0);
+        }
     }
 }
 
+
+/**************************************************
+@bref		MHTTPDLFILE 指令解析
+@param
+@return
+@note
+	+MHTTPDLFILE: 228877,228877,100
+**************************************************/
+
+void mhttpdlfileParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen;
+	uint8_t process;
+	uint8_t restore[20] = { 0 };
+	uint8_t param[30] = { 0 };
+	int index;
+	rebuf = buf;
+	relen = len;
+
+	index = my_getstrindex((char *)rebuf, "+MHTTPDLFILE:", relen);
+	if (index >= 0)
+	{
+		rebuf += index + 14;
+		relen -= index + 14;
+		index = getCharIndexWithNum(rebuf, relen, ',', 2);
+		if (index > 0)
+		{
+			rebuf += index + 1;
+			relen -= index + 1;
+			index  = getCharIndex(rebuf, relen, '\r');
+			if (index > 0 && index <= 4)
+			{
+				memcpy(restore, rebuf, index);
+				restore[index] = 0;
+				process = atoi(restore);
+				if (process == 100)
+				{
+					LogPrintf(DEBUG_ALL, "mhttpdlfileParser==>finish");
+					sprintf(param, "Downlod load music[%d] success", sysinfo.downloadNum);
+					if (sysinfo.downloadNum < 3)
+					{
+						sysparam.musicfile[sysinfo.downloadNum] = 1;
+					}
+					paramSaveAll();
+					instructionRespone(param);
+				}
+				else
+				{
+					LogPrintf(DEBUG_ALL, "mhttpdlfileParser==>error");
+					sprintf(param, "Downlod load music[%d] error", sysinfo.downloadNum);
+					instructionRespone(param);
+				}
+			}
+		}
+	}
+}
+
+/**************************************************
+@bref		MAUDPLFILE 指令解析
+@param
+@return
+@note
+	+MAUDPLFILE: 2
+	+MAUDPLFILE: 3
+**************************************************/
+
+static void maudplfileParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen;
+	uint8_t result;
+	int index;
+	index = my_getstrindex(buf, "+MAUDPLFILE:", len);
+	if (index >= 0)
+	{
+		rebuf = buf + index + 13;
+		relen = len - index - 13;
+		result = rebuf[0] - '0';
+		if (result == 2 || result == 3)
+		{
+			LogPrintf(DEBUG_ALL, "Audio play done");
+			sysinfo.petbellPlaying = 0;
+			if (sysinfo.petSpkCnt == 0 && sysinfo.petBellOnoff == 0)
+	        {
+				netRequestClear(NET_REQUEST_TTS_CTL);
+				portSpkGpioCfg(0);
+	        }
+		}
+	}
+}
+
+/**************************************************
+@bref		MHTTPURC 指令解析
+@param
+@return
+@note
+	+MHTTPURC: "err",0,1
+**************************************************/
+
+static void mhttpurcParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen;
+	uint8_t errcode;
+	char restore[10] = { 0 };
+	int index;
+
+	rebuf = buf;
+	relen = len;
+	index = my_getstrindex((char *)rebuf, "+MHTTPURC:", relen);
+	if (index >= 0)
+	{
+		index = my_getstrindex((char *)rebuf, "\"err\"", relen);
+		if (index >= 0)
+		{
+			rebuf += index + 4;
+			relen -= index + 4;
+			index = getCharIndexWithNum(rebuf, relen, ',', 2);
+			if (index > 0)
+			{
+				rebuf += index + 1;
+				relen -= index + 1;
+				index = getCharIndex(rebuf, relen, '\r');
+				if (index > 0 && index < 3)
+				{
+					memcpy(restore, rebuf, index);
+					restore[index] = 0;
+					errcode = atoi(restore);
+					uint8_t param[50] = { 0 };
+					sprintf(param, "Downlod load music[%d] fail, error code:%d", sysinfo.downloadNum, errcode);
+					instructionRespone(param);
+				}
+			}
+		}
+	}
+}
+
+/**************************************************
+@bref		MFLIST 指令解析
+@param
+@return
+@note
+	+MFLIST: "/etc/http_file/Music1.mp3",296572
+	+MFLIST: "/etc/http_file/Music2.mp3",228877
+**************************************************/
+
+static void mflistParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen;
+	uint8_t musicNumber;
+	int index;
+	char restore[50] = { 0 };
+
+	rebuf = buf;
+	relen = len;
+	index = my_getstrindex(rebuf, "+MFLIST:", relen);
+	while (index >= 0)
+	{
+		rebuf += index + 7;
+		relen -= index + 7;
+		index = my_getstrindex(rebuf, "/etc/http_file/", relen);
+		if (index > 0 && index < 10)
+		{
+			rebuf += index + 15;
+			relen -= index + 15;
+			index = my_getstrindex(rebuf, "Music", relen);
+			if (index > 0 && index < 3)
+			{
+				rebuf += index + 5;
+				relen -= index + 5;
+				musicNumber = rebuf[0] - '0';
+				LogPrintf(DEBUG_ALL, "find music[%d]", musicNumber);
+			}
+		}
+		index = my_getstrindex(rebuf, "+MFLIST:", relen);
+	}
+}
 
 /**************************************************
 @bref		模组异常复位检测
@@ -2301,6 +2530,8 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
     mipcallParser(dataRestore, len);
 	cmtParser(dataRestore, len);
 	mttsplayParser(dataRestore, len);
+	mhttpdlfileParser(dataRestore, len);
+	maudplfileParser(dataRestore, len);
 	if (miprdParser(dataRestore, len))
 	{
 		
@@ -2337,11 +2568,11 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
         case CGSN_CMD:
             cgsnParser(dataRestore, len);
             break;
-//        case MADC_CMD:
-//            madcParser(dataRestore, len);
-//            break;
         case MIPSACK_CMD:
             mipsackParser(dataRestore, len);
+            break;
+		case MFLIST_CMD:
+            mflistParser(dataRestore, len);
             break;
         case MIPRD_CMD:
         	if (my_strstr((char *)dataRestore, "+CME ERROR:", len))
@@ -2467,8 +2698,7 @@ void moduleGetLbs(void)
 
 void moduleGetWifiScan(void)
 {
-    sendModuleCmd(AT_CMD, NULL);
-    sendModuleCmd(MWIFISCANSTART_CMD, NULL);
+    sendModuleCmd(MWIFISCANSTART_CMD, "3");
 }
 
 /**************************************************
@@ -2698,6 +2928,7 @@ char *getQgmr(void)
 **************************************************/
 void changeMode4Callback(void)
 {
+	LogPrintf(DEBUG_ALL, "changeMode4Callback");
 	if (moduleState.fsmState == NORMAL_STATUS)
 	{
 		changeProcess(OFFLINE_STATUS);
@@ -2850,15 +3081,34 @@ void playtts(char *tts)
 @note
 **************************************************/
 
-void plalAudio(char *filePath)
+void plalAudio(uint8_t musicNum)
 {
     char buff[128];
-    if (strlen(filePath) >= 120)
-    {
-        return;
-    }
-    sprintf(buff, "\"%s\",0", filePath);
+//    if (strlen(musicNum) >= 120)
+//    {
+//        return;
+//    }
+    sprintf(buff, "/etc/http_file/Music%d.mp3", musicNum);
     sendModuleCmd(MAUDPLFILE_CMD, buff);
+}
+
+/**************************************************
+@bref		下载audio语音到系统文件
+@param
+@return
+@note
+**************************************************/
+
+void downloadAudioToFile(uint8_t *http, uint8_t fileNum)
+{
+	if (strlen(http) + 17 >= 150)
+	{
+		LogPrintf(DEBUG_ALL, "downloadAudioToFile==>param is too long");
+		return;
+	}
+	uint8_t param[150] = { 0 };
+	sprintf(param, "\"%s\",\"Music%d.mp3\"", http, fileNum);
+	sendModuleCmd(MHTTPDLFILE_CMD, param);
 }
 
 
@@ -3092,7 +3342,7 @@ void outputTTs(void)
     if (ttsHead == NULL && sysinfo.petSpkCnt == 0)
     {
         LogMessage(DEBUG_ALL, "TTS==>Done!!!");
-        netRequestClear(NET_REQUEST_TTS_CTL);
+        
     }
 }
 

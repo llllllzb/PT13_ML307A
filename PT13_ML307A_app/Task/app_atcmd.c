@@ -205,6 +205,12 @@ static void doAtdebugCmd(uint8_t *buf, uint16_t len)
     {
 		appPeripheralInit();
     }
+    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"SN"))
+    {
+		memcpy(dynamicParam.SN, item.item_data[1], 15);
+		dynamicParam.SN[15] = 0;
+		dynamicParamSaveAll();
+    }
     else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"CHINA"))
     {
     	enc_unicode_to_utf8_one((unsigned long)item.item_data[1], msg, 1);

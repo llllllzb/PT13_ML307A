@@ -59,11 +59,19 @@ const instruction_s insCmdTable[] =
     {SYSTEMSHUTDOWN_INS, "SYSTEMSHUTDOWN"},
     {VOLUME_INS, "VOLUME"},
     {SPORTS_INS, "SPORTS"},
+    {PETBELL_INS, "PETBELL"},
+    {DOWNLOADFILE_INS, "DOWNLOADFILE"},
+    {MUSICLIST_INS, "MUSICLIST"},
 };
 
 static insMode_e mode123;
 static insParam_s param123;
 static uint8_t serverType;
+
+/*关于指令延迟回复*/
+static insMode_e lastmode;
+insParam_s lastparam;
+int rspTimeOut = -1;
 
 
 static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
@@ -112,6 +120,18 @@ static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *pa
 			jt808MessageSend(buf, len);
         	break;
     }
+}
+
+void instructionRespone(char *message)
+{
+    if (rspTimeOut == -1)
+        return;
+    char buf[50];
+    sprintf(buf, "%s", message);
+    setLastInsid();
+    sendMsgWithMode((uint8_t *)buf, strlen(buf), lastmode, &lastparam);
+    stopTimer(rspTimeOut);
+    rspTimeOut = -1;
 }
 
 static void doParamInstruction(ITEM *item, char *message)
@@ -191,8 +211,8 @@ static void doParamInstruction(ITEM *item, char *message)
             sprintf(message + strlen(message), "Mode23: %d minutes;", sysparam.gapMinutes);
             break;
        	case MODE4:
-			sprintf(message + strlen(message), "Mode4: wifi %dmin, %dstep, %dstep;", 
-			sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
+			sprintf(message + strlen(message), "Mode4: gpsgap %dmin, wifi %dmin, %dstep, %dstep;", 
+			sysparam.mode4GapMin, sysparam.wifiCheckGapMin_in, sysparam.wifiCheckGapStep_in,sysparam.wifiCheckGapStep_out);
        		break;
     }
 
@@ -486,16 +506,20 @@ static void doModeInstruction(ITEM *item, char *message)
 				portGsensorCtl(1);
 				if (item->item_data[2][0] != 0)
 				{
-					sysparam.wifiCheckGapMin_in  = (uint16_t)atoi(item->item_data[2]);
-					sysparam.wifiCheckGapMin_out = (uint16_t)atoi(item->item_data[2]);
+					sysparam.mode4GapMin = (uint16_t)atoi(item->item_data[2]);
 				}
 				if (item->item_data[3][0] != 0)
 				{
-					sysparam.wifiCheckGapStep_in = (uint16_t)atoi(item->item_data[3]);
+					sysparam.wifiCheckGapMin_in  = (uint16_t)atoi(item->item_data[3]);
+					sysparam.wifiCheckGapMin_out = (uint16_t)atoi(item->item_data[3]);
 				}
 				if (item->item_data[4][0] != 0)
 				{
-					sysparam.wifiCheckGapStep_out = (uint16_t)atoi(item->item_data[4]);
+					sysparam.wifiCheckGapStep_in = (uint16_t)atoi(item->item_data[4]);
+				}
+				if (item->item_data[5][0] != 0)
+				{
+					sysparam.wifiCheckGapStep_out = (uint16_t)atoi(item->item_data[5]);
 				}
 				if (sysinfo.outBleFenceFlag == 0)
 				{
@@ -518,7 +542,6 @@ static void doModeInstruction(ITEM *item, char *message)
                 break;
         }
         paramSaveAll();
-
     }
 }
 
@@ -767,12 +790,13 @@ void doDebugInstrucion(ITEM *item, char *message)
     sprintf(message + strlen(message), "sysrun:%.2d:%.2d:%.2d;gpsRequest:%02X;gpslast:%.2d:%.2d:%.2d;",
             sysinfo.sysTick / 3600, sysinfo.sysTick % 3600 / 60, sysinfo.sysTick % 60, sysinfo.gpsRequest,
             sysinfo.gpsUpdatetick / 3600, sysinfo.gpsUpdatetick % 3600 / 60, sysinfo.gpsUpdatetick % 60);
-    sprintf(message + strlen(message), "netreq:%02x;", sysinfo.netRequest);
-	sprintf(message + strlen(message), "wifiEvt:%02x;", sysinfo.wifiExtendEvt);
-	sprintf(message + strlen(message), "alarmReq:%02x;", sysinfo.alarmRequest);
+    sprintf(message + strlen(message), "netreq:0x%02x;", sysinfo.netRequest);
+	sprintf(message + strlen(message), "wifiEvt:0x%02x;", sysinfo.wifiExtendEvt);
+	sprintf(message + strlen(message), "alarmReq:0x%02x;", sysinfo.alarmRequest);
 	sprintf(message + strlen(message), "outBle:%d;", sysinfo.outBleFenceFlag);
 	sprintf(message + strlen(message), "outWifi:%d;", sysinfo.outWifiFenceFlag);
 	sprintf(message + strlen(message), "runFsm:%d;", sysinfo.runFsm);
+	sprintf(message + strlen(message), "moduleFsm:%d;", getModuleStatus());
 	sprintf(message + strlen(message), "ble:%d %d;", dev[0].useflag, dev[1].useflag);
     paramSaveAll();
     dynamicParamSaveAll();
@@ -1511,32 +1535,39 @@ static void doPetSpkInstruction(ITEM *item, char *message)
 	}
 	else
 	{
-		if (item->item_data[1][0] != 0)
+		if (sysinfo.petBellOnoff)
 		{
-			sysinfo.petSpkCnt = atoi(item->item_data[1]);
+			strcpy(message, "The bell is playing, please try again later");
 		}
-		if (item->item_data[2][0] != 0)
+		else
 		{
-			sysinfo.petSpkGap = atoi(item->item_data[2]);
-		}
-		if (sysinfo.petSpkCnt == 0)
-		{
-			sysinfo.petSpkCnt = 1;
-		}
-		if (sysinfo.petSpkGap == 0)
-		{
-			sysinfo.petSpkGap = 5;
-		}
-		tmos_memset(sysinfo.ttsContent, 0, 60);
-		sprintf(message, "Open the pet speaker %d times every %d seconds", sysinfo.petSpkCnt, sysinfo.petSpkGap);
+			if (item->item_data[1][0] != 0)
+			{
+				sysinfo.petSpkCnt = atoi(item->item_data[1]);
+			}
+			if (item->item_data[2][0] != 0)
+			{
+				sysinfo.petSpkGap = atoi(item->item_data[2]);
+			}
+			if (sysinfo.petSpkCnt == 0)
+			{
+				sysinfo.petSpkCnt = 1;
+			}
+			if (sysinfo.petSpkGap == 0)
+			{
+				sysinfo.petSpkGap = 5;
+			}
+			tmos_memset(sysinfo.ttsContent, 0, 60);
+			sprintf(message, "Open the pet speaker %d times every %d seconds", sysinfo.petSpkCnt, sysinfo.petSpkGap);
 
-		uint8_t len = strlen(item->item_data[3]) > 60 ? 60 : strlen(item->item_data[3]);
-		changeHexStringToByteArray(sysinfo.ttsContent, item->item_data[3], len / 2);
-		sysinfo.ttsContent[len / 2] = 0;
-		sysinfo.ttsContentLen = len / 2;
-		LogPrintf(DEBUG_ALL, "Cnt :%d Gap:%d buff:%s  %s,len:%d %d", sysinfo.petSpkCnt, sysinfo.petSpkGap, sysinfo.ttsContent, item->item_data[3], len, strlen(item->item_data[3]));
-		netRequestSet(NET_REQUEST_TTS_CTL);
-		sprintf(message + strlen(message), " and play content is[%s] ,len is %d", sysinfo.ttsContent, sysinfo.ttsContentLen);
+			uint8_t len = strlen(item->item_data[3]) > 60 ? 60 : strlen(item->item_data[3]);
+			changeHexStringToByteArray(sysinfo.ttsContent, item->item_data[3], len / 2);
+			sysinfo.ttsContent[len / 2] = 0;
+			sysinfo.ttsContentLen = len / 2;
+			LogPrintf(DEBUG_ALL, "Cnt :%d Gap:%d buff:%s  %s,len:%d %d", sysinfo.petSpkCnt, sysinfo.petSpkGap, sysinfo.ttsContent, item->item_data[3], len, strlen(item->item_data[3]));
+			netRequestSet(NET_REQUEST_TTS_CTL);
+			sprintf(message + strlen(message), " and play content is[%s] ,len is %d", sysinfo.ttsContent, sysinfo.ttsContentLen);
+		}
 	}	
 }
 
@@ -1640,11 +1671,111 @@ static void doSportsInstruction(ITEM *item, char *message)
 	sprintf(message, "Device gps work %d min, and acquisition positon every %d seconds", sysinfo.mode123Min, sysinfo.mode123GpsFre);
 }
 
+static void doPetbellInstruction(ITEM *item, char *message)
+{
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+	{
+		sprintf(message, "Pet bell is %s, music number is %d", sysinfo.petBellOnoff ? "On" : "Off", sysparam.musicNum);
+	}
+	else
+	{
+	
+		if (sysinfo.petSpkCnt > 0)
+		{
+			strcpy(message, "Pet spk is playing, try it again later");
+		}
+		else 
+		{
+			sysinfo.petBellOnoff = atoi(item->item_data[1]);
+			sysparam.musicNum = atoi(item->item_data[2]);
+			if (sysparam.musicNum < 3)
+			{
+				if (sysparam.musicfile[sysparam.musicNum] == 0)
+				{
+					sprintf(message, "No this music,please download");
+				}
+				else
+				{
+					if (sysinfo.petBellOnoff != 0)
+						netRequestSet(NET_REQUEST_TTS_CTL);
+					paramSaveAll();
+					sprintf(message, "Enable pet bell playing music[%d] %d times success", sysparam.musicNum, sysinfo.petBellOnoff);
+				}
+			}
+			else
+			{
+				sprintf(message, "Please enter true music number");
+			}
+
+			
+		}
+	}
+}
+
+static void downloadFileRspTimeOut(void)
+{
+	if (rspTimeOut != -1)
+	{
+		instructionRespone("DownloadFile:Time out");
+	}
+	rspTimeOut = -1;
+}
+
+static uint8_t doDownloadFileInstruction(ITEM *item, char *message)
+{
+	if (getModuleStatus() != OFFLINE_STATUS && getModuleStatus() != NORMAL_STATUS)
+	{
+		strcpy(message, "Net is not ok");
+		return 1;
+	}
+	else if (item->item_data[1] == 0)
+	{
+		strcpy(message, "Please enter http url");
+		return 1;
+	}
+	else if (item->item_data[2] == 0)
+	{
+		strcpy(message, "Please enter file number");
+		return 1;
+	}
+	else 
+	{
+		if (my_strstr(item->item_data[1], ".mp3", strlen(item->item_data[1])) || 
+			my_strstr(item->item_data[1], ".amr", strlen(item->item_data[1])))
+		{
+			sysinfo.downloadNum = atoi(item->item_data[2]);
+			if (sysinfo.downloadNum >= 3)
+				sysinfo.downloadNum = 0;
+			downloadAudioToFile(item->item_data[1], sysinfo.downloadNum);
+			sprintf(message, "Go to [%s] to download file in number %d music file", item->item_data[1], sysinfo.downloadNum);
+			if (rspTimeOut == -1)
+	        {
+				rspTimeOut = startTimer(300, downloadFileRspTimeOut, 0);
+	        }
+			return 0;
+		}
+		else
+		{
+			strcpy(message, "Http url is too long");
+			return 1;
+		}
+	}
+	
+}
+
+static void doMusicListInstruction(ITEM *item, char *message)
+{
+	
+
+}
+
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
 {
     char message[384] = {0};
     message[0] = 0;
+    uint8_t ret = 1;
+    insParam_s *debugparam;
     switch (cmdid)
     {
         case PARAM_INS:
@@ -1776,6 +1907,22 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
        	case SPORTS_INS:
 			doSportsInstruction(item, message);
        		break;
+       	case PETBELL_INS:
+			doPetbellInstruction(item, message);
+       		break;
+       	case DOWNLOADFILE_INS:
+       	    if (param != NULL)
+        	{
+	           	debugparam = (insParam_s *)param;
+	           	lastparam.link = debugparam->link;
+	           	lastmode = mode;
+           	}
+       		getLastInsid();
+			ret = doDownloadFileInstruction(item, message);
+       		break;
+       	case MUSICLIST_INS:
+			
+       		break;
         default:
             if (mode == SMS_MODE || mode == BLE_MODE)
             {
@@ -1788,7 +1935,7 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
             snprintf(message, 50, "Unsupport CMD:%s;", item->item_data[0]);
             break;
     }
-    if (cmdid != POSITION_INS)
+    if (cmdid != POSITION_INS && ret)
     {
     	sendMsgWithMode((uint8_t *)message, strlen(message), mode, param);
     }
