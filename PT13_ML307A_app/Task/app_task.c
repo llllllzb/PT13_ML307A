@@ -2781,7 +2781,7 @@ static void mode123UploadTask(void)
 	lbsRequestClear();
 	uploadTick++;
 	sysinfo.mode123RunTick++;
-	if ((uploadTick >= sysinfo.mode123GpsFre && sysinfo.mode123GpsFre != 0) || uploadTick >= 10)
+	if (uploadTick >= sysinfo.mode123GpsFre)
 	{
 //	    if (calculateDistanceOfPoint() == 1)
 //        {
