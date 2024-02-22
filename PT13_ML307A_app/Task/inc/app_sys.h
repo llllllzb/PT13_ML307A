@@ -102,6 +102,7 @@ typedef struct
 	uint32_t sysMinutes;
 
     uint32_t gpsRequest;	  /*GPS 开关请求*/
+    uint16_t gpsRunTick;
     uint32_t netRequest;	  /*上网请求*/
     uint32_t sysTick;    /*系统节拍*/
     uint32_t runStartTick;  /*开机节拍*/

@@ -480,6 +480,7 @@ static void gpsOpen(void)
     moduleSleepCtl(0);
     LogMessage(DEBUG_ALL, "gpsOpen");
 	sysinfo.ephemerisFlag = 0;
+	sysinfo.gpsRunTick = 0;
 }
 /**************************************************
 @bref		µÈ´ýgpsÎÈ¶¨
@@ -491,7 +492,7 @@ static void gpsOpen(void)
 static void gpsWait(void)
 {
     static uint8_t runTick = 0;
-    if (++runTick >= 5)
+    if (++runTick >= 1)
     {
         runTick = 0;
         gpsChangeFsmState(GPSOPENSTATUS);
@@ -525,6 +526,7 @@ static void gpsClose(void)
     ledStatusUpdate(SYSTEM_LED_GPSOK, 0);
 	clearLastPoint();
     LogMessage(DEBUG_ALL, "gpsClose");
+    sysinfo.gpsRunTick = 0;
 }
 
 
@@ -591,9 +593,11 @@ static void gpsRequestTask(void)
             break;
         case GPSWATISTATUS:
             gpsWait();
+            sysinfo.gpsRunTick++;
             break;
         case GPSOPENSTATUS:
             gpsinfo = getCurrentGPSInfo();
+            sysinfo.gpsRunTick++;
             if (gpsinfo->fixstatus)
             {
                 ledStatusUpdate(SYSTEM_LED_GPSOK, 1);
@@ -2478,13 +2482,14 @@ static void wifiRequestTask(void)
     {
     	return;
    	}
-   	if (sysinfo.agpsRequest)
+   	if ((sysinfo.agpsRequest || sysinfo.gpsRunTick <= 8) && sysinfo.gpsOnoff)
    	{
 		return;
    	}
     sysinfo.wifiRequest = 0;
     startTimer(30, moduleGetWifiScan, 0);
-    wifiTimeOutId = startTimer(620, wifiTimeout, 0);
+    if (wifiTimeOutId == -1)
+    	wifiTimeOutId = startTimer(620, wifiTimeout, 0);
 }
 
 /**************************************************

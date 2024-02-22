@@ -62,6 +62,7 @@ typedef enum
     PETBELL_INS,
     DOWNLOADFILE_INS,
     MUSICLIST_INS,
+    ADCCAL_INS,
 } INSTRUCTIONID;
 
 

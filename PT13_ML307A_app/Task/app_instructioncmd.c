@@ -62,6 +62,7 @@ const instruction_s insCmdTable[] =
     {PETBELL_INS, "PETBELL"},
     {DOWNLOADFILE_INS, "DOWNLOADFILE"},
     {MUSICLIST_INS, "MUSICLIST"},
+    {ADCCAL_INS, "ADCCAL"},
 };
 
 static insMode_e mode123;
@@ -1769,6 +1770,33 @@ static uint8_t doDownloadFileInstruction(ITEM *item, char *message)
 	
 }
 
+void doAdccalInstrucion(ITEM *item, char *message)
+{
+    float vol;
+    uint8_t type;
+    if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+		sprintf(message, "ADC cal param: %f", sysparam.adccal);
+    }
+    else
+    {
+        vol = atof(item->item_data[1]);
+        type = atoi(item->item_data[2]);
+        if (type == 0)
+        {
+        	float x;
+            x = portGetAdcVol(ADC_CHANNEL);
+            sysparam.adccal = vol / x;
+        }
+        else
+        {
+            sysparam.adccal = vol;
+        }
+        paramSaveAll();
+		sprintf(message, "Update ADC calibration parameter to %f", sysparam.adccal);
+    }
+}
+
 static void doMusicListInstruction(ITEM *item, char *message)
 {
 	
@@ -1928,6 +1956,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
        		break;
        	case MUSICLIST_INS:
 			
+       		break;
+       	case ADCCAL_INS:
+			doAdccalInstrucion(item, message);
        		break;
         default:
             if (mode == SMS_MODE || mode == BLE_MODE)
