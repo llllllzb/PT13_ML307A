@@ -3418,6 +3418,8 @@ void myTaskPreInit(void)
 static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
 {
 	uint8_t ret;
+	uint16_t year = 0;
+    uint8_t  month = 0, date = 0, hour = 0, minute = 0, second = 0;
     if (events & SYS_EVENT_MSG)
     {
         uint8 *pMsg;
@@ -3492,11 +3494,17 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
 		LogPrintf(DEBUG_BLE, "dev[0]sockFlag:%d dev[1]sockFlag:%d ", devInfo[0].sockFlag, devInfo[1].sockFlag);
 		LogPrintf(DEBUG_BLE, "Master sn:%s", sysinfo.masterSn);
 		LogPrintf(DEBUG_BLE, "dev[0]upTick:%d dev[1]Uptick:%d ", sysinfo.sysTick-devInfo[0].updateTick, sysinfo.sysTick - devInfo[1].updateTick);
-		LogPrintf(DEBUG_ALL, "fsm:%d gps:%x alm:%x wifi:%x lbs:%x net:%x outble:%x outwifi:%x", 
+		LogPrintf(DEBUG_BLE, "fsm:%d gps:%x alm:%x wifi:%x lbs:%x net:%x outble:%x outwifi:%x", 
 				sysinfo.runFsm, 		 sysinfo.gpsRequest, 
 				sysinfo.alarmRequest,    sysinfo.wifiExtendEvt,
 				sysinfo.lbsRequest, 	 sysinfo.netRequest, 
 				sysinfo.outBleFenceFlag, sysinfo.outWifiFenceFlag);
+		portGetRtcDateTime(&year, &month, &date, &hour, &minute, &second);
+		if (hour == 0 && minute == 0)
+		{
+			LogPrintf(DEBUG_BLE, "time of zero");
+			portClearStep();
+		}
 //        LogPrintf(DEBUG_ALL,  "*Mode: %d, mode4run: %d outWifiTick: %d inWifiTick: %d alreadystep:%d runstep:%d modulestate:%d*", sysparam.MODE, sysinfo.mode4SysMin, sysinfo.outWifiTick,sysinfo.inWifiTick,sysinfo.alreadystep,sysinfo.runningstep, getModuleStatus());
         LogMessage(DEBUG_ALL, "*************************************************************************");
         portDebugUartCfg(0);

@@ -1667,6 +1667,8 @@ void portClearStep(void)
 	clearStep();
 	dynamicParam.step = 0;
 	sysinfo.lastsetp = 0;
+    sysinfo.alreadystep = 0;
+	sysinfo.runningstep = 0;
 	dynamicParamSaveAll();
 }
 
