@@ -412,53 +412,37 @@ void gpsUartRead(uint8_t *msg, uint16_t len)
     }
 }
 
-static void gpsCfg(void)
+static void hdGpsInjectLocation(void)
 {
-    char param[50];
-	//关闭GSV
-    //sprintf(param, "$CCMSG,GSV,1,0,*1A\r\n");
-    sprintf(param, "$PCAS03,1,0,1,0,1,0,0,0,0,0,0,0,0,0*03\r\n");
-    portUartSend(&usart3_ctl, (uint8_t *)param, strlen(param));
-	sprintf(param, "$PCAS03,,,,,,,,,,,1*1F\r\n");
-	portUartSend(&usart3_ctl, (uint8_t *)param, strlen(param));
-
-    LogMessage(DEBUG_ALL, "gps config nmea output");
+	int32_t lat, lon;
+	static uint32_t agpsTick;
+	lat = dynamicParam.saveLat * 10000000;
+	lon = dynamicParam.saveLon * 10000000;
+	gnss_inject_location(lat, lon, 0, 0);
+	LogPrintf(DEBUG_ALL, "gnss_inject_location==>lat:%d lon:%d", lat, lon);
+	if (agpsTick == 0 || (sysinfo.oneMinTick >= agpsTick))
+    {
+    	agpsTick = sysinfo.oneMinTick + 120;
+		agpsRequestSet();
+    }	
 }
 /**************************************************
-@bref		切换中科微波特率为115200
+@bref		华大gps配置
 @param
 @return
 @note
 **************************************************/
-
-//$PCAS03,1,0,1,1,1,0,0,0,0,0,0,0,0,0*02
-static void changeGPSBaudRate(void)
+static void hdGpsCfg(void)
 {
-    char param[50];
-    sprintf(param, "$PCAS01,5*19\r\n");
-    portUartSend(&usart3_ctl, (uint8_t *)param, strlen(param));
-    portUartCfg(APPUSART3, 1, 115200, gpsUartRead);
-    LogMessage(DEBUG_ALL, "gps config baudrate to 115200");
-    startTimer(10, gpsCfg, 0);
+	hdGpsColdStart();
+	//hdGpsHotStart();
+	DelayMs(1);
+	//hdGpsGsvCtl(0);
+	startTimer(10, hdGpsInjectLocation, 0);
 }
-/**************************************************
-@bref		中科微热启动配置
-@param
-@return
-@note
-**************************************************/
 
-static void gpsWarmStart(void)
-{
-	char param[50];
-	//热启动
-	sprintf(param, "$PCAS10,0*1C\r\n");
-	portUartSend(&usart3_ctl, (uint8_t *)param, strlen(param));
-	LogMessage(DEBUG_ALL, "Gps config warm start");
-    startTimer(10, changeGPSBaudRate, 0);
-}
 /**************************************************
-@bref		开启gps
+@bref       开启gps
 @param
 @return
 @note
@@ -466,12 +450,10 @@ static void gpsWarmStart(void)
 
 static void gpsOpen(void)
 {
-	portGpsGpioCfg(1);
-	DelayMs(1);
-	GPSPWR_ON;
+    GPSPWR_ON;
     GPSLNA_ON;
-    portUartCfg(APPUSART3, 1, 9600, gpsUartRead);
-    startTimer(10, changeGPSBaudRate, 0);
+    portUartCfg(APPUSART3, 1, 115200, gpsUartRead);
+    startTimer(5, hdGpsCfg, 0);
     sysinfo.gpsUpdatetick = sysinfo.sysTick;
     sysinfo.gpsOnoff = 1;
     gpsChangeFsmState(GPSWATISTATUS);
@@ -479,11 +461,10 @@ static void gpsOpen(void)
     ledStatusUpdate(SYSTEM_LED_GPSOK, 0);
     moduleSleepCtl(0);
     LogMessage(DEBUG_ALL, "gpsOpen");
-	sysinfo.ephemerisFlag = 0;
-	sysinfo.gpsRunTick = 0;
+    sysinfo.gpsRunTick = 0;
 }
 /**************************************************
-@bref		等待gps稳定
+@bref       等待gps稳定
 @param
 @return
 @note
@@ -492,20 +473,25 @@ static void gpsOpen(void)
 static void gpsWait(void)
 {
     static uint8_t runTick = 0;
-    if (++runTick >= 1)
+    static uint8_t first;
+    if (++runTick >= 5)
     {
         runTick = 0;
         gpsChangeFsmState(GPSOPENSTATUS);
-        if (sysinfo.ephemerisFlag == 0)
-        {
-			agpsRequestSet();
-            
-        }
+//      if (gpsRequestOtherGet(GPS_REQUEST_BLE))
+//      {
+//          if (sysinfo.sysTick - sysinfo.agpsTick >= 7200 || first == 0)
+//          {
+//              first = 1;
+//              sysinfo.agpsTick = sysinfo.sysTick;
+//              agpsRequestSet();
+//          }
+//      }
     }
 }
 
 /**************************************************
-@bref		关闭gps
+@bref       关闭gps
 @param
 @return
 @note
@@ -516,19 +502,18 @@ static void gpsClose(void)
     GPSPWR_OFF;
     GPSLNA_OFF;
     portUartCfg(APPUSART3, 0, 115200, NULL);
-	DelayMs(1);
-	portGpsGpioCfg(0);
     sysinfo.rtcUpdate = 0;
     sysinfo.gpsOnoff = 0;
     gpsClearCurrentGPSInfo();
     terminalGPSUnFixed();
     gpsChangeFsmState(GPSCLOSESTATUS);
     ledStatusUpdate(SYSTEM_LED_GPSOK, 0);
-	clearLastPoint();
+//    if (primaryServerIsReady())
+//    {
+//        moduleSleepCtl(1);
+//    }
     LogMessage(DEBUG_ALL, "gpsClose");
-    sysinfo.gpsRunTick = 0;
 }
-
 
 /**************************************************
 @bref		保存上一次gps位置
@@ -566,17 +551,14 @@ void saveGpsHistory(void)
     }
 }
 
-
-/**************************************************
-@bref		gps控制任务
-@param
-@return
-@note
-**************************************************/
-
 static void gpsRequestTask(void)
 {
     gpsinfo_s *gpsinfo;
+    static uint16_t gpsInvalidTick = 0;
+	static uint8_t gpsInvalidFlag = 0, gpsInvalidFlagTick = 0;
+	uint16_t gpsInvalidparam;
+	/* 同步flag */
+	static uint8_t flag = 0;
 
     switch (sysinfo.gpsFsm)
     {
@@ -589,6 +571,7 @@ static void gpsRequestTask(void)
             if (sysinfo.gpsRequest != 0)
             {
                 gpsOpen();
+                flag = 1;
             }
             break;
         case GPSWATISTATUS:
@@ -601,12 +584,12 @@ static void gpsRequestTask(void)
             if (gpsinfo->fixstatus)
             {
                 ledStatusUpdate(SYSTEM_LED_GPSOK, 1);
-                lbsRequestClear();
-                wifiRequestClear(DEV_EXTEND_OF_MY | DEV_EXTEND_OF_BLE);
+               	lbsRequestClear();
+				wifiRequestClear(DEV_EXTEND_OF_MY | DEV_EXTEND_OF_BLE);
             }
             else
             {
-                ledStatusUpdate(SYSTEM_LED_GPSOK, 0);                
+                ledStatusUpdate(SYSTEM_LED_GPSOK, 0);    
             }
             if (sysinfo.gpsRequest == 0 || (sysinfo.sysTick - sysinfo.gpsUpdatetick) >= 20)
             {
@@ -614,6 +597,7 @@ static void gpsRequestTask(void)
             	{
 					saveGpsHistory();
 					agpsRequestClear();
+					flag = 0;
             	}
                 gpsClose();
             }
@@ -622,7 +606,9 @@ static void gpsRequestTask(void)
             gpsChangeFsmState(GPSCLOSESTATUS);
             break;
     }
+
 }
+
 
 
 /**************************************************
@@ -1851,6 +1837,13 @@ void wifiCheckByStep(void)
 	static uint8_t flag = 0;
 	if (sysinfo.gsensorOnoff == 0)
 		return;
+	if (sysparam.wifiCnt == 0)
+	{
+		flag = 0;
+		sysinfo.alreadystep = 0;
+		sysinfo.runningstep = 0;
+		return;
+	}
 	if (sysinfo.outBleFenceFlag == 0)
 	{
 		flag = 0;
@@ -2116,33 +2109,41 @@ static void sysAutoReq(void)
 		else
 		{
 			sysinfo.mode4NoNetTick = 0;
-			/*没出WIFI围栏且离开蓝牙围栏*/
-			if (sysinfo.outWifiFenceFlag == 0 && sysinfo.outBleFenceFlag)
+			if (sysparam.wifiCnt != 0)
 			{
-				sysinfo.outWifiTick = 0;
-				if (++sysinfo.inWifiTick >= sysparam.wifiCheckGapMin_in)
-				{
-					sysinfo.inWifiTick = 0;
-					LogMessage(DEBUG_ALL, "[IN]Wifi period");
-					wifiRequestSet(DEV_EXTEND_OF_FENCE);
-					/* 刷新一下搜WIFI步数 */
-					 sysinfo.alreadystep = portUpdateStep();
-					 sysinfo.runningstep = portUpdateStep();
-				}
-			}
-			/*已经WIFI出围栏，上线，不受蓝牙围栏限制*/
-			if (sysinfo.outWifiFenceFlag)
-			{
-				sysinfo.inWifiTick = 0;
-				if (++sysinfo.outWifiTick >= sysparam.wifiCheckGapMin_out)
+				/*没出WIFI围栏且离开蓝牙围栏*/
+				if (sysinfo.outWifiFenceFlag == 0 && sysinfo.outBleFenceFlag)
 				{
 					sysinfo.outWifiTick = 0;
-					LogMessage(DEBUG_ALL, "[OUT]Wifi out period");
-					wifiRequestSet(DEV_EXTEND_OF_FENCE);
-					/* 刷新一下WIFI步数 */
-					sysinfo.alreadystep = portUpdateStep();
-					sysinfo.runningstep = portUpdateStep();
+					if (++sysinfo.inWifiTick >= sysparam.wifiCheckGapMin_in)
+					{
+						sysinfo.inWifiTick = 0;
+						LogMessage(DEBUG_ALL, "[IN]Wifi period");
+						wifiRequestSet(DEV_EXTEND_OF_FENCE);
+						/* 刷新一下搜WIFI步数 */
+						 sysinfo.alreadystep = portUpdateStep();
+						 sysinfo.runningstep = portUpdateStep();
+					}
 				}
+				/*已经WIFI出围栏，上线，不受蓝牙围栏限制*/
+				if (sysinfo.outWifiFenceFlag)
+				{
+					sysinfo.inWifiTick = 0;
+					if (++sysinfo.outWifiTick >= sysparam.wifiCheckGapMin_out)
+					{
+						sysinfo.outWifiTick = 0;
+						LogMessage(DEBUG_ALL, "[OUT]Wifi period");
+						wifiRequestSet(DEV_EXTEND_OF_FENCE);
+						/* 刷新一下WIFI步数 */
+						sysinfo.alreadystep = portUpdateStep();
+						sysinfo.runningstep = portUpdateStep();
+					}
+				}
+			}
+			else
+			{
+				sysinfo.inWifiTick = 0;
+				sysinfo.outWifiTick = 0;
 			}
 		}
     }
@@ -2512,6 +2513,9 @@ void wakeUpByInt(uint8_t      type, uint8_t sec)
         case 2:
         	sysinfo.irqTick = sec;
         	break;
+        case 3:
+        	sysinfo.Ttstick = sec;
+        	break;
     }
 
     portSleepDn();
@@ -2603,6 +2607,15 @@ void autoSleepTask(void)
     if (sysinfo.irqTick != 0)
     {
 		sysinfo.irqTick--;
+    }
+    if (sysinfo.Ttstick != 0)
+    {
+		sysinfo.Ttstick--;
+    }
+    /* 防止模组没返回播报完成的信息 */
+    if (sysinfo.Ttstick == 0 && sysinfo.petBellOnoff == 0)
+    {
+		netRequestClear(NET_REQUEST_TTS_CTL);
     }
     //LogPrintf(DEBUG_ALL, "getWakeUpState:%d", getWakeUpState());
     if (getWakeUpState())
@@ -2854,8 +2867,14 @@ void systemCloseTask(void)
 		tick = 0;
 		return;
 	}
+	if (usart2_ctl.init == 0)
+	{
+		tick = 0;
+		return;
+	}
 	if (tick++ >= 20)
 	{
+		portUartCfg(APPUSART2, 0, 115200, NULL);
 		portSyspwkOffGpioCfg();
 		tick = 0;
 	}
@@ -3173,6 +3192,8 @@ void netRequestTask(void)
 					sysinfo.moduleFsm = MODULE_STATUS_WAIT;
 					runtick = 0;
 					moduleInit();
+					wifiRspSuccess();
+					wifiRequestClear(0xff);
 				}
 			}
 			break;
@@ -3263,7 +3284,7 @@ void taskRunInSecond(void)
     sysModeRunTask();
     serverManageTask();
     outputTTs();
-    //systemCloseTask();
+    systemCloseTask();
 }
 
 
@@ -3364,48 +3385,55 @@ void openuart2(void)
 @return
 @note
 **************************************************/
+static int8_t ttsId = -1;
 
 void myTaskPreInit(void)
 {
+	SetSysClock(CLK_SOURCE_PLL_60MHz);
 	portGpioSetDefCfg();
+	portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
+	portSyspwkGpioCfg();
+	SYS_POWER_ON;
 	
     tmos_memset(&sysinfo, 0, sizeof(sysinfo));
     paramInit();
-    sysinfo.logLevel = 9;
-    SetSysClock(CLK_SOURCE_PLL_60MHz);
-
-    //portModuleGpioCfg(1);
+    //sysinfo.logLevel = 9;
+    
     portGpsGpioCfg(1);
     portLedGpioCfg(1);
     portAdcCfg(1);
     portWdtCfg();
+    
     portDebugUartCfg(1);
     socketListInit();
     portSleepDn();
 	ledStatusUpdate(SYSTEM_LEN_IDLE, 1);
-	portSyspwkOffGpioCfg();
 
     volCheckRequestSet();
     createSystemTask(ledTask, 1);
     createSystemTask(outputNode, 2);
-    createSystemTask(keyTask, 1);
-    startTimer(10, openuart2, 0);
+    //createSystemTask(keyTask, 1);
     portSpkGpioCfg(0);
 
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
 	LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "SYS_GetLastResetSta:%x", SYS_GetLastResetSta());
-   	addCmdTTS(TTS_STARTUP);
+    if (dynamicParam.sysOnOff == 0)
+   		addCmdTTS(TTS_STARTUP);
+
     /* 开机保持长连接，3分钟内有连着蓝牙就断网，没连着蓝牙就继续长连接 */
 	netRequestSet(NET_REQUEST_KEEPNET_CTL);
 	/* 开机搜一次WIFI */
-	wifiRequestSet(DEV_EXTEND_OF_FENCE);
+	if (sysparam.wifiCnt != 0)
+		wifiRequestSet(DEV_EXTEND_OF_FENCE);
 	/* 开机定位一次 */
 	gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
 	/* 初始化状态 */
 	sysinfo.outBleFenceFlag  = 1;
 	sysinfo.outWifiFenceFlag = 1;
 	sysinfo.safeAreaFlag     = SAFE_AREA_IN;
+	dynamicParam.sysOnOff = 1;
+	dynamicParamSaveAll();
 }
 
 /**************************************************
@@ -3479,12 +3507,14 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
 		portGpsGpioCfg(0);
 		//portSpkGpioCfg(0);
 		//portWdtCancel();
+		//不关kernal
        	//tmos_stop_task(sysinfo.taskId, APP_TASK_KERNAL_EVENT);
         portDebugUartCfg(0);
         return events ^ APP_TASK_STOP_EVENT;
     }
     if (events & APP_TASK_ONEMINUTE_EVENT)
     {
+    	sysinfo.oneMinTick++;
    	 	portDebugUartCfg(1);
     	sysAutoReq();
     	calculateNormalTime();

@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 
-#define WIFIINFOMAX		20
+#define WIFIINFOMAX		10
 typedef enum{
 	PROTOCOL_01,//µÇÂ¼
 	PROTOCOL_12,//¶¨Î»

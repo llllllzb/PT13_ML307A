@@ -80,6 +80,7 @@ typedef struct
     uint8_t wifiScanCnt;
     uint8_t ringWakeUpTick;
     uint8_t cmdTick;
+    uint8_t Ttstick;
     uint8_t runFsm;
     uint8_t gpsFsm;
     uint8_t gpsOnoff;
@@ -111,6 +112,7 @@ typedef struct
     uint32_t alreadystep;	/*上一次达成目标时的步数*/
     uint32_t lastsetp;		/*上次步数*/
     uint32_t runningtime;	/*运动时间*/
+    uint32_t oneMinTick;	/*一分钟节拍，低功耗专用*/
     uint16_t mode4SysMin;
 
     float outsidevoltage;

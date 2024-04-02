@@ -78,7 +78,7 @@ void paramDefaultInit(uint8_t level)
         strcpy((char *)sysparam.agpsServer, "47.106.96.28");
         strcpy((char *)sysparam.agpsUser, "123");
         strcpy((char *)sysparam.agpsPswd, "123");
-        sysparam.agpsPort = 10187;
+        sysparam.agpsPort = 10189;
 
     }
     dynamicParam.runTime = 0;
@@ -112,6 +112,10 @@ void paramDefaultInit(uint8_t level)
     sysparam.stepFliter = 0xA7;
     sysparam.volume = 15;
     sysparam.mode4GapMin = 60;
+    sysparam.musicfile[0] = 0;
+    sysparam.musicfile[1] = 0;
+    sysparam.musicfile[2] = 0;
+    dynamicParam.sysOnOff = 0;
     //appCreatePasswordBySn(dynamicParam.SN + 9);
     dynamicParamSaveAll();
     paramSaveAll();
@@ -128,14 +132,8 @@ void paramInit(void)
    	if (sysparam.otaParamFlag != OTA_PARAM_FLAG)
     {
 		sysparam.otaParamFlag = OTA_PARAM_FLAG;
-		sysparam.range = 0x61;
-	    sysparam.smThrd = 0x60;
-	    sysparam.stepFliter = 0xA7;
-	    sysparam.mode4GapMin = 60;
-	    sysparam.musicNum = 1;
-	    sysparam.musicfile[0] = 0;
-	    sysparam.musicfile[1] = 0;
-	    sysparam.musicfile[2] = 0;
+
+		sysparam.wifiCnt = 0;
 		paramSaveAll();
     }
     sysinfo.lowvoltage = sysparam.lowvoltage / 10.0;

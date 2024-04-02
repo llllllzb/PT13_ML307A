@@ -2663,7 +2663,6 @@ int socketSendData(uint8_t link, uint8_t *data, uint16_t len)
         //链路未链接
         return 0;
     }
-    LogPrintf(DEBUG_ALL,"精准判断");
     sprintf(param, "%d,%d", link, len);
     sendModuleCmd(MIPSEND_CMD, param);
     createNode((char *)data, len, MIPSEND_CMD);
@@ -3172,7 +3171,10 @@ void addCmdTTS(tts_Chinese_e ttscmd)
 //		LogPrintf(DEBUG_ALL, "addTTS==>module is power off");
 //		return;
 //	}
-
+	if (isModulePowerOff())
+		wakeUpByInt(3, 20);
+	else
+		wakeUpByInt(3, 5);
 	netRequestSet(NET_REQUEST_TTS_CTL);
 	/*转换*/
 	for (i = 0; i < sizeof(ttsTable) / sizeof(ttsTable[0]); i++)
@@ -3268,6 +3270,8 @@ void addTTS(uint8_t *tts, uint8_t ttslen)
         LogMessage(DEBUG_ALL, "add tts fail");
         return;
     }
+
+	wakeUpByInt(3, 20);
 
 	netRequestSet(NET_REQUEST_TTS_CTL);
     len = ttslen + 1;

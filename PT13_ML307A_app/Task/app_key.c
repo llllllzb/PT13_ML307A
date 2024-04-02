@@ -6,7 +6,7 @@
  */
 #include "app_key.h"
 #include "app_net.h"
-
+#include "app_param.h"
 keyctrl_t pwkkey;
 
 void keyInit(void)
@@ -17,9 +17,12 @@ void keyInit(void)
 static int8_t shutDownId = -1;
 void systemShutDown(void)
 {
+	dynamicParam.sysOnOff = 0;
+	dynamicParamSaveAll();
+	DelayMs(500);
 	SYS_POWER_OFF;	
 	GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeOut_PP_5mA);
-	GPIOB_SetBits(SYS_PWROFF_PIN);
+	GPIOB_ResetBits(SYS_PWROFF_PIN);
 }
 
 void systemShutDownSuccess(void)

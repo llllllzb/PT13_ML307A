@@ -535,7 +535,8 @@ static void doModeInstruction(ITEM *item, char *message)
 	                agpsRequestClear();
 	                startTimer(50, changeMode4Callback, 0);
 	           	}
-				sprintf(message, "Change to mode %d, and wificheck every %dmin, %dstep, %dstep", workmode, sysparam.wifiCheckGapMin_in, 
+				sprintf(message, "Change to mode %d, gpsupload every %dmin, and wificheck every %dmin, %dstep, %dstep", workmode, 
+					sysparam.mode4GapMin, sysparam.wifiCheckGapMin_in, 
 					sysparam.wifiCheckGapStep_in, sysparam.wifiCheckGapStep_out);
             	break;
             default:
@@ -1323,12 +1324,19 @@ static void doSetWIFIMacInstrution(ITEM *item, char *message)
 	char wifimac[20] = {0};
 	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
 	{
-		strcpy(message, "Wifi list:");
-		for (i = 0; i < sizeof(sysparam.wifiList) / sizeof(sysparam.wifiList[0]); i++)
+		if (sysparam.wifiCnt != 0)
 		{
-			byteToHexString(sysparam.wifiList[i], (uint8_t *)wifimac, 12);
-			wifimac[12] = 0;
-			sprintf(message + strlen(message), " %s;", wifimac);
+			strcpy(message, "Wifi list:");
+			for (i = 0; i < sizeof(sysparam.wifiList) / sizeof(sysparam.wifiList[0]); i++)
+			{
+				byteToHexString(sysparam.wifiList[i], (uint8_t *)wifimac, 12);
+				wifimac[12] = 0;
+				sprintf(message + strlen(message), " %s;", wifimac);
+			}
+		}
+		else
+		{
+			strcpy(message, "Wifi scan function is disable");
 		}
 	}
 	else
@@ -1360,10 +1368,20 @@ static void doSetWIFIMacInstrution(ITEM *item, char *message)
 			/*插入wifi列表*/
 			cnt++;
 		}
+		sysparam.wifiCnt = cnt;
 		if (cnt == 0)
 		{
 			tmos_memset(sysparam.wifiList, 0, sizeof(sysparam.wifiList));
 			strcpy(message, "Disable wifi fence and clear the wifi list");
+			//关闭wifi扫描功能
+			wifiRequestClear(DEV_EXTEND_OF_FENCE);
+			sysinfo.outWifiFenceFlag = 1;			//在updateModuleStatus内由蓝牙决定是否保持在线
+			sysinfo.safeAreaFlag = SAFE_AREA_OUT;	//直接把状态设置成离开围栏，就不会报警了
+		}
+		else
+		{
+		    wifiRequestSet(DEV_EXTEND_OF_FENCE);	//如果设置了围栏，当下立即扫描一次
+			
 		}
 		paramSaveAll();
 	}

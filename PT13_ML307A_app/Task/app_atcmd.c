@@ -260,8 +260,7 @@ static void atCmdNmeaParser(uint8_t *buf, uint16_t len)
     char buff[80];
     if (my_strstr((char *)buf, "ON", len))
     {
-        strcpy(buff, "$PCAS03,0,0,0,1,1,0,0,0,0,0,0,0,0,0*02\r\n");
-        portUartSend(&usart3_ctl, buff, strlen(buff));
+        hdGpsGsvCtl(1);
         LogMessage(DEBUG_FACTORY, "NMEA ON OK");
         sysinfo.nmeaOutPutCtl = 1;
         gpsRequestSet(GPS_REQUEST_DEBUG);
@@ -272,8 +271,8 @@ static void atCmdNmeaParser(uint8_t *buf, uint16_t len)
         gpsRequestClear(GPS_REQUEST_ALL);
         sysinfo.nmeaOutPutCtl = 0;
     }
-
 }
+
 
 /**************************************************
 @bref		AT^FMPC_GSENSOR ÷∏¡ÓΩ‚Œˆ

@@ -1251,7 +1251,14 @@ void BleFenceCheck(void)
 				sysinfo.outBleFenceFlag = 1;
 				LogPrintf(DEBUG_BLE, "Dev leave ble fence");
 				LogPrintf(DEBUG_BLE, "wifireq line:%d", __LINE__);
-				wifiRequestSet(DEV_EXTEND_OF_FENCE);				
+				if (sysparam.wifiCnt != 0)
+					wifiRequestSet(DEV_EXTEND_OF_FENCE);
+                if (sysinfo.kernalRun == 0)
+                {
+                    volCheckRequestSet();
+                    LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
+                    tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+                }
 			}
 		}
 	}

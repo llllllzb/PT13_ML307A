@@ -709,7 +709,6 @@ void portSpkGpioCfg(uint8_t onoff)
 void portSyspwkGpioCfg(void)
 {
 	GPIOB_ModeCfg(SYS_POWER_PIN, GPIO_ModeOut_PP_5mA);
-	SYS_POWER_OFF;
 }
 
 /**
@@ -719,8 +718,7 @@ void portSyspwkGpioCfg(void)
  */
 void portSyspwkOffGpioCfg(void)
 {
-    GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_PU);
-	portSyspwkGpioCfg();
+    GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_PD);
 }
 
 

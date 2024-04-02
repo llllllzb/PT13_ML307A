@@ -797,108 +797,156 @@ void agpsRequestClear(void)
     sysinfo.agpsRequest = 0;
     
 }
+
 /**************************************************
 @bref		socket数据接收
 @param
 @return
 @note
 **************************************************/
-
+#define HD_PERH_GPS_MAX			460
 static void agpsSocketRecv(char *data, uint16_t len)
 {
-    LogPrintf(DEBUG_ALL, "Agps Reject %d Bytes", len);
-    //LogMessageWL(DEBUG_ALL, data, len);
-    portUartSend(&usart3_ctl, data, len);
+    uint16_t i = 0;
+	static uint8_t agpsRestore[HD_PERH_GPS_MAX + 1] = {0};
+	static uint16_t agpsSize = 0;
+	uint16_t frame_len = 0;//协议解析出来的数据长度
+	uint16_t remain_len = len;//本包数据剩余长度
+	uint8_t *rebuf;
+	rebuf = data;
+	
+	//showByteData("lastdata>>", agpsRestore, agpsSize);
+	if (agpsRestore[0] == 0xF1 && agpsRestore[1] == 0xD9)
+	{
+		frame_len = (agpsRestore[4] | (agpsRestore[5] << 8));
+		memcpy(agpsRestore + agpsSize, rebuf, frame_len + 8 - agpsSize);
+		LogPrintf(DEBUG_ALL, "上一次数据剩余长度%d, 还差%d补齐上一次数据", agpsSize, frame_len + 8 - agpsSize);
+		//showByteData("lastdata send>>", agpsRestore, frame_len + 8);
+		gnss_eph_inject_data(agpsRestore, frame_len + 8);
+		memset(agpsRestore, 0, HD_PERH_GPS_MAX + 1);
+		rebuf += (frame_len + 8 - agpsSize);
+		remain_len = len - (frame_len + 8 - agpsSize);
+		agpsSize = 0;
+	}
+	while (i < (len - 1))
+	{
+		if ((rebuf[i] == 0xF1) && (rebuf[i + 1] == 0xD9))
+		{
+			frame_len = (rebuf[i + 4] | (rebuf[i + 5] << 8));
+			//剩余数据长度大于要发送的协议数据长度
+			if (remain_len >= frame_len)
+			{
+				//LogPrintf(DEBUG_ALL, "[1]i:%d remain_len:%d frame_len:%d", i, remain_len, frame_len);
+				gnss_eph_inject_data(rebuf + i, frame_len + 8);
+				//showByteData("nowdata send>>", rebuf + i, frame_len + 8);
+				remain_len -= frame_len + 8;
+				i = i + frame_len + 8;
+				memset(agpsRestore, 0, HD_PERH_GPS_MAX + 1);
+			}
+			//要发的数据大于剩余数据长度了，数据在下一包里面
+			else
+			{
+				//存放在缓冲区
+				memcpy(agpsRestore, rebuf + i, remain_len);
+				agpsSize = remain_len;
+				//LogPrintf(DEBUG_ALL, "[2]i:%d remain_len:%d frame_len:%d", i, remain_len, frame_len);
+				break;
+			}
+		}
+		else
+		{
+			i++;
+		}
+	}
 }
 
-static void agpsServerConnTask(void)
+
+void agnssServerTask(void)
 {
-	static uint8_t agpsFsm = 0;
-	static uint8_t runTick = 0;
-	char agpsBuff[150] = {0};
-	uint16_t agpsLen;
-	int ret;
-	gpsinfo_s *gpsinfo;
+    gpsinfo_s *gpsinfo;
+    static uint8_t agpsFsm = 0;
+    static uint8_t runTick = 0;
+    char agpsBuff[150];
+    int ret;
 
 	if (sysparam.agpsen == 0)
-	{
+    {
 		sysinfo.agpsRequest = 0;
-		agpsFsm = 0;
 		if (socketGetUsedFlag(AGPS_LINK))
 		{
 			socketDel(AGPS_LINK);
 		}
 		return;
-	}
-	if (sysinfo.agpsRequest == 0)
-	{
-		agpsFsm = 0;
-		if (socketGetUsedFlag(AGPS_LINK))
+    }
+    if (sysinfo.agpsRequest == 0)
+    {
+    	if (socketGetUsedFlag(AGPS_LINK))
 		{
 			socketDel(AGPS_LINK);
 		}
-		return;
-	}
+        return;
+    }
+    gpsinfo = getCurrentGPSInfo();
 
-	gpsinfo = getCurrentGPSInfo();
-
-	if (isModuleRunNormal() == 0)
-	{
-		return ;
-	}
-	if (gpsinfo->fixstatus || sysinfo.gpsOnoff == 0)
-	{
-		socketDel(AGPS_LINK);
-		agpsRequestClear();
-		return;
-	}
-	if (socketGetUsedFlag(AGPS_LINK) != 1)
-	{
-		agpsFsm = 0;
-		ret = socketAdd(AGPS_LINK, sysparam.agpsServer, sysparam.agpsPort, agpsSocketRecv);
-		if (ret != 1)
+    if (isModuleRunNormal() == 0)
+    {
+    	if (socketGetUsedFlag(AGPS_LINK))
 		{
-			LogPrintf(DEBUG_ALL, "agps add socket err[%d]", ret);
-			agpsRequestClear();
+			socketDel(AGPS_LINK);
 		}
-		return;
-	}
-	if (socketGetConnStatus(AGPS_LINK) != SOCKET_CONN_SUCCESS)
-	{
-		agpsFsm = 0;
-		LogMessage(DEBUG_ALL, "wait agps server ready");
-		return;
-	}
-	switch (agpsFsm)
-	{
-		case 0:
-//			  if (gpsinfo->fixstatus == 0)
-//			  {
-//				  sprintf(agpsBuff, "user=%s;pwd=%s;cmd=full;", sysparam.agpsUser, sysparam.agpsPswd);
-//				  socketSendData(AGPS_LINK, (uint8_t *) agpsBuff, strlen(agpsBuff));
-//			  }
-			createProtocolA0(agpsBuff, &agpsLen);
-			socketSendData(AGPS_LINK, (uint8_t *) agpsBuff, agpsLen);
+        return ;
+    }
+    
+    if (gpsinfo->fixstatus || sysinfo.gpsOnoff == 0)
+    {
+        socketDel(AGPS_LINK);
+        agpsRequestClear();
+        return;
+    }
+    
+    if (socketGetUsedFlag(AGPS_LINK) != 1)
+    {
+        agpsFsm = 0;
+        ret = socketAdd(AGPS_LINK, sysparam.agpsServer, sysparam.agpsPort, agpsSocketRecv);
+        if (ret != 1)
+        {
+            LogPrintf(DEBUG_ALL, "agps add socket err[%d]", ret);
+            agpsRequestClear();
+        }
+        return;
+    }
+    if (socketGetConnStatus(AGPS_LINK) != SOCKET_CONN_SUCCESS)
+    {
+    	agpsFsm = 0;
+        LogMessage(DEBUG_ALL, "wait agps server ready");
+        //模组在发送AT+MIPOPEN=4,"TCP","agps.domilink.com",10189,60,2,0之后，又发送AT+MIPRD=0,1024时，可能会仅返回+MIPOP
+        //导致设备无法知道agps链路已经连接
+        if (isAgpsDataRecvComplete() != 0)
+        {
+			socketSetConnState(AGPS_LINK, SOCKET_CONN_SUCCESS);
+			LogPrintf(DEBUG_ALL, "Agps sikp");
+        }
+        return;
+    }
+    switch (agpsFsm)
+    {
+		case 0: 
+			//hdGpsColdStart();
 			agpsFsm = 1;
 			runTick = 0;
 			break;
 		case 1:
-			if (++runTick >= 30)
+			if (runTick++ >= 60)
 			{
-				if (isAgpsDataRecvComplete() == 0)
-				{
-					agpsFsm = 0;
-					runTick = 0;
-					socketDel(AGPS_LINK);
-					agpsRequestClear();
-				}
+				runTick = 0;
+				agpsFsm = 2;
+				socketDel(AGPS_LINK);
+				agpsRequestClear();
+				/*注入历史位置*/
+				//gnss_inject_location(sysparam.lastlat, sysparam.lastlon, 0, 0);
 			}
 			break;
-		default:
-			agpsFsm = 0;
-			break;
-	}
-
+    }
 }
 
 
@@ -921,7 +969,7 @@ void serverManageTask(void)
     }
 
     hiddenServerConnTask();
-    agpsServerConnTask();
+    agnssServerTask();
 }
 
 /**************************************************
