@@ -437,7 +437,7 @@ static void hdGpsCfg(void)
 	hdGpsColdStart();
 	//hdGpsHotStart();
 	DelayMs(1);
-	//hdGpsGsvCtl(0);
+	hdGpsGsvCtl(0);
 	startTimer(10, hdGpsInjectLocation, 0);
 }
 
@@ -448,7 +448,7 @@ static void hdGpsCfg(void)
 @note
 **************************************************/
 
-static void gpsOpen(void)
+void gpsOpen(void)
 {
     GPSPWR_ON;
     GPSLNA_ON;
@@ -497,7 +497,7 @@ static void gpsWait(void)
 @note
 **************************************************/
 
-static void gpsClose(void)
+void gpsClose(void)
 {
     GPSPWR_OFF;
     GPSLNA_OFF;
@@ -1242,7 +1242,7 @@ static void voltageCheckTask(void)
     sysinfo.outsidevoltage = x * sysparam.adccal;
     sysinfo.insidevoltage  = sysinfo.outsidevoltage;
 
-    //LogPrintf(DEBUG_ALL, "x:%.2f, outsidevoltage:%.2f", x, sysinfo.outsidevoltage);
+    LogPrintf(DEBUG_ALL, "x:%.2f, outsidevoltage:%.2f", x, sysinfo.outsidevoltage);
 
 	//电池保护
     if (sysinfo.outsidevoltage < 2.4 && sysinfo.canRunFlag == 1)
@@ -1317,7 +1317,7 @@ static void voltageCheckTask(void)
 @note
 **************************************************/
 
-static void changeModeFsm(uint8_t fsm)
+void changeModeFsm(uint8_t fsm)
 {
     sysinfo.runFsm = fsm;
     LogPrintf(DEBUG_ALL, "changeModeFsm==>%d", fsm);
@@ -1398,70 +1398,6 @@ static void mode4CloseSocketQuickly(void)
 	{
 		sysinfo.nonetTick = 0;
 		tick = 0;
-	}
-}
-
-/**************************************************
-@bref		mode4d模组管理
-@param
-@return
-@note
-关闭模组不关闭kernal，因为还要计步数
-**************************************************/
-
-void mode4NetRequestTask(void)
-{
-	static uint16_t delaytick = 0;
-	static uint16_t offlinetick = 0;
-
-	switch (sysinfo.moduleFsm)
-	{
-		case MODULE_STATUS_CLOSE:
-			if (sysinfo.netRequest != 0)
-			{
-				portAdcCfg(1);
-				if (isModulePowerOff()) modulePowerOn();
-				portLedGpioCfg(1);
-				sysinfo.moduleFsm = MODULE_STATUS_OPEN;
-			}
-			delaytick = 0;
-			break;
-		case MODULE_STATUS_OPEN:
-			/* 如果回到蓝牙围栏则关闭模组 */
-		    if (sysinfo.gpsRequest == 0 && sysinfo.alarmRequest    == 0 \
-										&& sysinfo.wifiRequest     == 0 \
-										&& sysinfo.lbsRequest      == 0 \
-										&& sysinfo.netRequest      == 0 \
-										&& sysinfo.outBleFenceFlag == 0)
-			{
-				delaytick++;
-				if (delaytick >= 10)
-				{
-					//LogMessage(DEBUG_ALL, "mode4CloseModuleQuickly==>ok");
-					delaytick = 0;
-					modulePowerOff();
-					portAdcCfg(0);
-					portLedGpioCfg(0);
-					portSpkGpioCfg(0);
-					sysinfo.moduleFsm = MODULE_STATUS_CLOSE;
-				}
-			}
-			/* 如果回到wifi围栏则切换到在网模式 */
-			if (isModuleRunNormal())
-			{
-				if (sysinfo.netRequest == NET_REQUEST_OFFLINE) 
-				{
-					offlinetick++;
-					if (offlinetick >= 10) {
-						changeMode4Callback();
-						offlinetick = 0;
-					}
-				}
-			}
-			break;
-		default:
-			sysinfo.moduleFsm = MODULE_STATUS_CLOSE;
-			break;
 	}
 }
 
@@ -2725,7 +2661,7 @@ static void lightDetectionTask(void)
 static void mode123UploadTask(void)
 {
 	gpsinfo_s *gpsinfo;
-	static uint8_t uploadTick = 0, nofixTick = 0;
+	static uint32_t uploadTick = 0, nofixTick = 0;
 	if (gpsRequestGet(GPS_REQUEST_123_CTL) == 0)
 	{
 		uploadTick = 0;
@@ -2765,6 +2701,7 @@ static void mode123UploadTask(void)
 				//resetSafeArea();
             }
         }
+        //5分钟还没补传完，关闭本次sports指令
         if (sysinfo.mode123RunTick + 300 >= sysinfo.mode123Min * 60) 
         {
 			//resetSafeArea();
@@ -2783,17 +2720,19 @@ static void mode123UploadTask(void)
 	{
 		uploadTick = 0;
 		sysinfo.mode123RunTick = 0;
-		if ((nofixTick % 10) == 0)
+		if ((nofixTick % 60) == 0)
 		{
 			lbsRequestSet(DEV_EXTEND_OF_MY);
 		}
-		if (nofixTick >= 180)
+		//不定位 ，取消这次sports指令
+		if (nofixTick >= sysinfo.mode123Min * 60)
 		{
 			sysinfo.mode123RunTick = sysinfo.mode123Min * 60;
 			startTimer(50, resetSafeArea, 0);
 			protocolSend(NORMAL_LINK, PROTOCOL_12, getLastFixedGPSInfo());
 	        jt808SendToServer(TERMINAL_POSITION, getLastFixedGPSInfo());
 		}
+		
 		return;
 	}
 	lbsRequestClear();
@@ -2872,9 +2811,8 @@ void systemCloseTask(void)
 		tick = 0;
 		return;
 	}
-	if (tick++ >= 20)
+	if (tick++ >= 30)
 	{
-		portUartCfg(APPUSART2, 0, 115200, NULL);
 		portSyspwkOffGpioCfg();
 		tick = 0;
 	}
@@ -3074,7 +3012,7 @@ uint8_t netRequestOtherGet(uint32_t req)
 @return
 @note
 sysinfo.outBleFenceFlag优先级高于sysinfo.outWifiFenceFlag
-
+这里只管理wifi ble产生的联网逻辑
 **************************************************/
 
 void updateModuleStatus(void)
@@ -3177,7 +3115,6 @@ void netRequestTask(void)
 				sysinfo.moduleFsm = MODULE_STATUS_OPEN;
 				runtick = 0;
 			}
-
 			break;
 		case MODULE_STATUS_OPEN:
 			/* 如果回到蓝牙围栏则关闭模组 */
@@ -3186,7 +3123,6 @@ void netRequestTask(void)
 				/* 这里要等于0，如果写大于0 */
 				if (runtick++ >= 2)
 				{
-					
 					socketDelAll();
 					portAdcCfg(0);
 					sysinfo.moduleFsm = MODULE_STATUS_WAIT;
@@ -3373,27 +3309,19 @@ void debugtask(void)
     }
 }
 
-void openuart2(void)
-{
-	portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
-	SYS_POWER_ON;
-}
-
 /**************************************************
 @bref		系统启动时配置
 @param
 @return
 @note
 **************************************************/
-static int8_t ttsId = -1;
 
 void myTaskPreInit(void)
 {
 	SetSysClock(CLK_SOURCE_PLL_60MHz);
 	portGpioSetDefCfg();
-	portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
 	portSyspwkGpioCfg();
-	SYS_POWER_ON;
+	portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
 	
     tmos_memset(&sysinfo, 0, sizeof(sysinfo));
     paramInit();
@@ -3408,11 +3336,12 @@ void myTaskPreInit(void)
     socketListInit();
     portSleepDn();
 	ledStatusUpdate(SYSTEM_LEN_IDLE, 1);
-
+	ledStatusUpdate(SYSTEM_LED_RUN, 1);
     volCheckRequestSet();
     createSystemTask(ledTask, 1);
     createSystemTask(outputNode, 2);
-    //createSystemTask(keyTask, 1);
+    //10秒后在给MCU供电 防止MCU关不了机
+    startTimer(100, systemOpen, 0);
     portSpkGpioCfg(0);
 
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
@@ -3421,7 +3350,7 @@ void myTaskPreInit(void)
     if (dynamicParam.sysOnOff == 0)
    		addCmdTTS(TTS_STARTUP);
 
-    /* 开机保持长连接，3分钟内有连着蓝牙就断网，没连着蓝牙就继续长连接 */
+    /* 开机保持网络长连接，3分钟内有连着蓝牙就断网，没连着蓝牙就继续长连接 */
 	netRequestSet(NET_REQUEST_KEEPNET_CTL);
 	/* 开机搜一次WIFI */
 	if (sysparam.wifiCnt != 0)

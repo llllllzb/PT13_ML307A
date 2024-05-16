@@ -2045,7 +2045,7 @@ OK
 static uint8_t miprdParser(uint8_t *buf, uint16_t len)
 {
 	int index;
-	uint8_t link, reindex;
+	uint8_t link, reindex, ret = 0;
 	uint8_t *rebuf;
 	uint16_t relen;
 	uint8_t restore[513];
@@ -2125,6 +2125,7 @@ static uint8_t miprdParser(uint8_t *buf, uint16_t len)
 		else
 		{
 			LogMessage(DEBUG_ALL, "No follow-up data4");
+			ret = 1;
 		}
 		debuglen = rxlen > 256 ? 256 : rxlen;
 		byteToHexString(rebuf, restore, debuglen);
@@ -2137,6 +2138,7 @@ static uint8_t miprdParser(uint8_t *buf, uint16_t len)
 		relen -= index;
 		index = my_getstrindex(rebuf, "+MIPRD:", relen);
 	}
+	return ret;
 }
 
 
@@ -2562,7 +2564,10 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
 	maudplfileParser(dataRestore, len);
 	if (miprdParser(dataRestore, len))
 	{
-		
+		if (moduleState.cmd == MIPRD_CMD)
+		{
+			return;
+		}
 	}
 
     /*****************************************/

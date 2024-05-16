@@ -83,6 +83,7 @@ typedef struct
 } insParam_s;
 extern insParam_s lastparam;
 extern int rspTimeOut;
+void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *param);
 void instructionParser(uint8_t *str, uint16_t len, insMode_e mode, void *param);
 void dorequestSend123(void);
 void instructionRespone(char *message);

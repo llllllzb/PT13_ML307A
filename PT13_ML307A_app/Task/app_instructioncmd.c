@@ -75,7 +75,7 @@ insParam_s lastparam;
 int rspTimeOut = -1;
 
 
-static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
+void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
 {
     insParam_s *insparam;
 
@@ -605,7 +605,13 @@ void do123Instruction(ITEM *item, insMode_e mode, void *param)
 	    netRequestSet(NET_REQUEST_CONNECT_ONE);
 	    sysinfo.flag123 = 1;
 	    save123InstructionId();
-	    
+	    if (sysinfo.kernalRun == 0)
+		{
+			volCheckRequestSet();
+			LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
+			tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+			changeModeFsm(MODE_START);
+		}
     }
 
 }
@@ -1594,7 +1600,6 @@ static void doUartInstruction(ITEM *item, char *message)
 {
 	if (atoi(item->item_data[1]) == 0)
 	{
-		portUartCfg(APPUSART2, 0, 115200, NULL);
 		sysinfo.logLevel = 0;
 		portSyspwkOffGpioCfg();
 		strcpy(message, "Close uart 2");
@@ -1687,6 +1692,14 @@ static void doSportsInstruction(ITEM *item, char *message)
 	lbsRequestSet(DEV_EXTEND_OF_MY);
 	gpsRequestSet(GPS_REQUEST_123_CTL | GPS_REQUEST_UPLOAD_ONE);
 	netRequestSet(NET_REQUEST_CONNECT_ONE);
+	if (sysinfo.kernalRun == 0)
+	{
+		volCheckRequestSet();
+		LogPrintf(DEBUG_ALL, "kernal start==>%s, %d", __FUNCTION__, __LINE__);
+		tmos_set_event(sysinfo.taskId, APP_TASK_RUN_EVENT);
+		changeModeFsm(MODE_START);
+	}
+
 	sprintf(message, "Device gps work %d min, and acquisition positon every %d seconds", sysinfo.mode123Min, sysinfo.mode123GpsFre);
 }
 

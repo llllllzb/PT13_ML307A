@@ -16,6 +16,7 @@
 #include "app_bleprotocol.h"
 #include "app_net.h"
 #include "app_task.h"
+#include "app_atcmd.h"
 /*
  * 全局变量声明
  */
@@ -171,7 +172,15 @@ static bStatus_t appWriteAttrCB(uint16 connHandle, gattAttribute_t *pAttr,
             	insParam.bleConhandle = connHandle;
             	if (pValue[0] != 0x0C)
             	{
-                	instructionParser(pValue, len, BLE_MODE, &insParam);
+            		strToUppper(pValue, len);
+            		if (pValue[0] == 'A' && pValue[1] == 'T' && pValue[2] == '^')
+            		{
+						atCmdBleParserFun(pValue, len, BLE_MODE, &insParam);
+            		}
+            		else
+            		{
+                		instructionParser(pValue, len, BLE_MODE, &insParam);
+                	}
                 }
                 else
                 {

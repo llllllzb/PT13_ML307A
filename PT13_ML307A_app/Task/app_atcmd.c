@@ -169,6 +169,14 @@ static void doAtdebugCmd(uint8_t *buf, uint16_t len)
     {
 		LED1_OFF;
     }
+    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"GPSON"))
+    {
+		gpsOpen();
+    }
+    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"GPSOFF"))
+    {
+		gpsClose();
+    }
     else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"BONDPSD"))
     {
 		appBondPsdCfg(atoi(item.item_data[1]));
@@ -238,14 +246,20 @@ static void doAtdebugCmd(uint8_t *buf, uint16_t len)
 @note
 **************************************************/
 
-static void atCmdFmpcAdccalParser(void)
+static void atCmdFmpcAdccalParser(insMode_e mode, void *param)
 {
     float x;
+    char buff[100] = { 0 };
     x = portGetAdcVol(ADC_CHANNEL);
     LogPrintf(DEBUG_ALL, "vCar:%.2f", x);
     sysparam.adccal = 4.0 / x;
     paramSaveAll();
-    LogPrintf(DEBUG_FACTORY, "Update the ADC calibration parameter to %f", sysparam.adccal);
+    sprintf(buff, "Update the ADC calibration parameter to %f", sysparam.adccal);
+    LogMessage(DEBUG_FACTORY, buff);
+    if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
 }
 
 /**************************************************
@@ -255,15 +269,35 @@ static void atCmdFmpcAdccalParser(void)
 @note
 **************************************************/
 
-static void atCmdNmeaParser(uint8_t *buf, uint16_t len)
+static void atCmdNmeaParser(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
 {
-    char buff[80];
+    char buff[200] = { 0 };
+    gpsinfo_s *gpsinfo;
+    uint8_t i = 0;
     if (my_strstr((char *)buf, "ON", len))
     {
+    	gpsinfo = getCurrentGPSInfo();
         hdGpsGsvCtl(1);
         LogMessage(DEBUG_FACTORY, "NMEA ON OK");
         sysinfo.nmeaOutPutCtl = 1;
         gpsRequestSet(GPS_REQUEST_DEBUG);
+        if (param != NULL)
+        {
+			strcpy(buff, "GPS CN:");
+			for (i = 0; i < sizeof(gpsinfo->gpsCn); i++)
+			{
+				if (gpsinfo->gpsCn[i] != 0)
+					sprintf(buff + strlen(buff), "%d;", gpsinfo->gpsCn);
+			}
+			strcpy(buff + strlen(buff), "BD CN:");
+			for (i = 0; i < sizeof(gpsinfo->beidouCn); i++)
+			{
+				if (gpsinfo->beidouCn[i] != 0)
+					sprintf(buff + strlen(buff), "%d;", gpsinfo->beidouCn);
+			}
+			
+			sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+        }
     }
     else
     {
@@ -281,9 +315,23 @@ static void atCmdNmeaParser(uint8_t *buf, uint16_t len)
 @note
 **************************************************/
 
-static void atCmdFMPCgsensorParser(void)
+static void atCmdFMPCgsensorParser(insMode_e mode, void *param)
 {
-    read_gsensor_id();
+	char buff[100] = { 0 };
+	int id;
+    id = read_gsensor_id();
+    if (param != NULL)
+    {
+		if (id == -1)
+		{
+			strcpy(buff, "Read gsensor chip id error");
+		}
+		else
+		{
+			sprintf(buff, "GSENSOR Chk OK. ID=0x%X", id);
+			sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+		}
+    }
 }
 
 /**************************************************
@@ -310,10 +358,15 @@ static void atCmdZTSNParser(uint8_t *buf, uint16_t len)
 @note
 **************************************************/
 
-void atCmdIMEIParser(void)
+void atCmdIMEIParser(insMode_e mode, void *param)
 {
-    char imei[20];
+    char buff[100] = { 0 };
     LogPrintf(DEBUG_FACTORY, "ZTINFO:%s:%s:%s", dynamicParam.SN, getModuleIMEI(), EEPROM_VERSION);
+    if (param != NULL)
+    {
+		sprintf(buff, "ZTINFO:%s:%s:%s", dynamicParam.SN, getModuleIMEI(), EEPROM_VERSION);
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
 }
 
 //unsigned char nmeaCrc(char *str, int len)
@@ -339,26 +392,42 @@ void atCmdIMEIParser(void)
 @note
 **************************************************/
 
-static void atCmdFmpcNmeaParser(uint8_t *buf, uint16_t len)
+static void atCmdFmpcNmeaParser(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
 {
-	char buff[80];
-	if (my_strstr((char *)buf, "ON", len))
-	{
-		sysinfo.nmeaOutPutCtl = 1;
-		//开启AGPS有效性检测
-		sprintf(buff, "$PCAS03,,,,,,,,,,,1*1F\r\n");
-		portUartSend(&usart3_ctl, (uint8_t *)buff, strlen(buff));
-		LogMessage(DEBUG_FACTORY, "NMEA OPEN");
-	}
-	else
-	{
-//		//关闭AGPS有效性检测
-		sprintf(buff, "$PCAS03,,,,,,,,,,,0*1E\r\n");
-		portUartSend(&usart3_ctl, (uint8_t *)buff, strlen(buff));
-		sysinfo.nmeaOutPutCtl = 0;
-		LogMessage(DEBUG_FACTORY, "NMEA CLOSE");
-	}
-
+    char buff[200] = { 0 };
+    gpsinfo_s *gpsinfo;
+    uint8_t i = 0;
+    if (my_strstr((char *)buf, "ON", len))
+    {
+    	gpsinfo = getCurrentGPSInfo();
+        hdGpsGsvCtl(1);
+        LogMessage(DEBUG_FACTORY, "NMEA ON OK");
+        sysinfo.nmeaOutPutCtl = 1;
+        gpsRequestSet(GPS_REQUEST_DEBUG);
+        if (param != NULL)
+        {
+			strcpy(buff, "GPS CN:");
+			for (i = 0; i < sizeof(gpsinfo->gpsCn); i++)
+			{
+				if (gpsinfo->gpsCn[i] != 0)
+					sprintf(buff + strlen(buff), "%d;", gpsinfo->gpsCn);
+			}
+			strcpy(buff + strlen(buff), "BD CN:");
+			for (i = 0; i < sizeof(gpsinfo->beidouCn); i++)
+			{
+				if (gpsinfo->beidouCn[i] != 0)
+					sprintf(buff + strlen(buff), "%d;", gpsinfo->beidouCn);
+			}
+			
+			sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+        }
+    }
+    else
+    {
+        LogMessage(DEBUG_FACTORY, "NMEA OFF OK");
+        gpsRequestClear(GPS_REQUEST_ALL);
+        sysinfo.nmeaOutPutCtl = 0;
+    }
 }
 /**************************************************
 @bref		FMPC_BAT 指令
@@ -369,10 +438,16 @@ static void atCmdFmpcNmeaParser(uint8_t *buf, uint16_t len)
 @note
 **************************************************/
 
-static void atCmdFmpcBatParser(void)
+static void atCmdFmpcBatParser(insMode_e mode, void *param)
 {
+	char buff[50] = { 0 };
     queryBatVoltage();
     LogPrintf(DEBUG_FACTORY, "Vbat: %.3fv", sysinfo.insidevoltage);
+    if (param != NULL)
+    {
+		sprintf(buff, "Vbat: %.3fv", sysinfo.insidevoltage);
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
 }
 /**************************************************
 @bref		FMPC_ACC 指令
@@ -397,15 +472,21 @@ static void atCmdFmpcAccParser(void)
 @note
 **************************************************/
 
-static void atCmdFmpcGsmParser(void)
+static void atCmdFmpcGsmParser(insMode_e mode, void *param)
 {
+	char buff[50] = { 0 };
     if (isModuleRunNormal())
     {
-        LogMessage(DEBUG_FACTORY, "GSM SERVICE OK");
+        strcpy(buff, "GSM SERVICE OK");
     }
     else
     {
-        LogMessage(DEBUG_FACTORY, "GSM SERVICE FAIL");
+        strcpy(buff, "GSM SERVICE FAIL");
+    }
+    LogMessage(DEBUG_FACTORY, buff);
+    if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
     }
 }
 
@@ -418,10 +499,16 @@ static void atCmdFmpcGsmParser(void)
 @note
 **************************************************/
 
-static void atCmdFmpcCsqParser(void)
+static void atCmdFmpcCsqParser(insMode_e mode, void *param)
 {
+	char buff[50] = { 0 };
     sendModuleCmd(CSQ_CMD, NULL);
-    LogPrintf(DEBUG_FACTORY, "+CSQ: %d,99\r\nOK", getModuleRssi());
+    sprintf(buff, "+CSQ: %d,99\r\nOK", getModuleRssi());
+    LogMessage(DEBUG_FACTORY, buff);
+    if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
 }
 
 
@@ -434,12 +521,18 @@ static void atCmdFmpcCsqParser(void)
 @note
 **************************************************/
 
-static void atCmdFmpcIMSIParser(void)
+static void atCmdFmpcIMSIParser(insMode_e mode, void *param)
 {
+	char buff[100] = { 0 };
     sendModuleCmd(CIMI_CMD, NULL);
     sendModuleCmd(MCCID_CMD, NULL);
     sendModuleCmd(CGSN_CMD, "1");
-    LogPrintf(DEBUG_FACTORY, "FMPC_IMSI_RSP OK, IMSI=%s&&%s&&%s", dynamicParam.SN, getModuleIMSI(), getModuleICCID());
+    sprintf(buff, "FMPC_IMSI_RSP OK, IMSI=%s&&%s&&%s", dynamicParam.SN, getModuleIMSI(), getModuleICCID());
+	LogMessage(DEBUG_FACTORY, buff);
+	if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
 }
 
 /**************************************************
@@ -451,9 +544,16 @@ static void atCmdFmpcIMSIParser(void)
 @note
 **************************************************/
 
-static void atCmdFmpcChkpParser(void)
+static void atCmdFmpcChkpParser(insMode_e mode, void *param)
 {
-    LogPrintf(DEBUG_FACTORY, "+FMPC_CHKP:%s,%s:%d", dynamicParam.SN, sysparam.Server, sysparam.ServerPort);
+	char buff[100] = { 0 };
+    sprintf(buff, "+FMPC_CHKP:%s,%s:%d", dynamicParam.SN, sysparam.Server, sysparam.ServerPort);
+    LogMessage(DEBUG_FACTORY, buff);
+	if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
+
 }
 
 /**************************************************
@@ -465,11 +565,17 @@ static void atCmdFmpcChkpParser(void)
 @note
 **************************************************/
 
-static void atCmdFmpcCmParser(void)
+static void atCmdFmpcCmParser(insMode_e mode, void *param)
 {
+	char buff[100] = { 0 };
     sysparam.cm = 1;
     paramSaveAll();
-    LogMessage(DEBUG_FACTORY, "CM OK");
+    strcpy(buff, "CM OK");
+    LogMessage(DEBUG_FACTORY, buff);
+	if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
 
 }
 /**************************************************
@@ -479,15 +585,21 @@ static void atCmdFmpcCmParser(void)
 @note
 **************************************************/
 
-static void atCmdCmGetParser(void)
+static void atCmdCmGetParser(insMode_e mode, void *param)
 {
+	char buff[100] = { 0 };
     if (sysparam.cm == 1)
     {
-        LogMessage(DEBUG_FACTORY, "CM OK");
+        strcpy(buff, "CM OK");
     }
     else
     {
-        LogMessage(DEBUG_FACTORY, "CM FAIL");
+        strcpy(buff, "CM FAIL");
+    }
+    LogMessage(DEBUG_FACTORY, buff);
+	if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
     }
 }
 /**************************************************
@@ -497,9 +609,15 @@ static void atCmdCmGetParser(void)
 @note
 **************************************************/
 
-static void atCmdFmpcExtvolParser(void)
+static void atCmdFmpcExtvolParser(insMode_e mode, void *param)
 {
-    LogPrintf(DEBUG_FACTORY, "+FMPC_EXTVOL: %.2f", sysinfo.outsidevoltage);
+	char buff[100] = { 0 };
+    sprintf(buff, "+FMPC_EXTVOL: %.2f", sysinfo.outsidevoltage);
+    LogMessage(DEBUG_FACTORY, buff);
+	if (param != NULL)
+    {
+		sendMsgWithMode((uint8_t *)buff, strlen(buff), mode, param);
+    }
 }
 
 /**************************************************
@@ -552,49 +670,49 @@ void atCmdParserFunction(uint8_t *buf, uint16_t len)
                         doAtdebugCmd(buf + ret + 1, len - ret - 1);
                         break;
                     case AT_NMEA_CMD:
-                        atCmdNmeaParser(buf + ret + 1, len - ret - 1);
+                        atCmdNmeaParser(buf + ret + 1, len - ret - 1, DEBUG_MODE, NULL);
                         break;
                     case AT_ZTSN_CMD:
                         atCmdZTSNParser((uint8_t *)buf + ret + 1, len - ret - 1);
                         break;
                     case AT_IMEI_CMD:
-                        atCmdIMEIParser();
+                        atCmdIMEIParser(0, NULL);
                         break;
                     case AT_FMPC_NMEA_CMD :
-                        atCmdFmpcNmeaParser((uint8_t *)buf + ret + 1, len - ret - 1);
+                        atCmdFmpcNmeaParser((uint8_t *)buf + ret + 1, len - ret - 1, DEBUG_MODE, NULL);
                         break;
                     case AT_FMPC_BAT_CMD :
-                        atCmdFmpcBatParser();
+                        atCmdFmpcBatParser(0, NULL);
                         break;
                     case AT_FMPC_GSENSOR_CMD :
-                        atCmdFMPCgsensorParser();
+                        atCmdFMPCgsensorParser(0, NULL);
                         break;
                     case AT_FMPC_ACC_CMD :
                         atCmdFmpcAccParser();
                         break;
                     case AT_FMPC_GSM_CMD :
-                        atCmdFmpcGsmParser();
+                        atCmdFmpcGsmParser(0, NULL);
                         break;
                     case AT_FMPC_ADCCAL_CMD:
-                        atCmdFmpcAdccalParser();
+                        atCmdFmpcAdccalParser(0, NULL);
                         break;
                     case AT_FMPC_CSQ_CMD:
-                        atCmdFmpcCsqParser();
+                        atCmdFmpcCsqParser(0, NULL);
                         break;
                     case AT_FMPC_IMSI_CMD:
-                        atCmdFmpcIMSIParser();
+                        atCmdFmpcIMSIParser(0, NULL);
                         break;
                     case AT_FMPC_CHKP_CMD:
-                        atCmdFmpcChkpParser();
+                        atCmdFmpcChkpParser(0, NULL);
                         break;
                     case AT_FMPC_CM_CMD:
-                        atCmdFmpcCmParser();
+                        atCmdFmpcCmParser(0, NULL);
                         break;
                     case AT_FMPC_CMGET_CMD:
-                        atCmdCmGetParser();
+                        atCmdCmGetParser(0, NULL);
                         break;
                     case AT_FMPC_EXTVOL_CMD:
-                        atCmdFmpcExtvolParser();
+                        atCmdFmpcExtvolParser(0, NULL);
                         break;
                     case AT_FMPC_LDR_CMD:
 						atCmdFMPCLdrParase();
@@ -611,3 +729,105 @@ void atCmdParserFunction(uint8_t *buf, uint16_t len)
         createNode(buf, len, 0);
     }
 }
+
+/**************************************************
+@bref		蓝牙通道的AT调试指令解析
+@param
+@return
+@note
+**************************************************/
+
+void atCmdBleParserFun(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
+{
+    int ret, cmdlen, cmdid;
+    char cmdbuf[51];
+
+    //识别AT^
+    if (buf[0] == 'A' && buf[1] == 'T' && buf[2] == '^')
+    {
+        LogMessageWL(DEBUG_ALL, (char *)buf, len);
+        ret = getCharIndex(buf, len, '=');
+        
+        if (ret < 0)
+        {	
+        	//由于是蓝牙发送\r\n不方便 
+            //ret = getCharIndex(buf, len, '\r');
+            //所以直接取全长
+            ret = len;
+        }
+        if (ret >= 0)
+        {
+            cmdlen = ret - 3;
+            if (cmdlen < 50)
+            {
+                strncpy(cmdbuf, (const char *)buf + 3, cmdlen);
+                cmdbuf[cmdlen] = 0;
+                cmdid = getatcmdid((uint8_t *)cmdbuf);
+                switch (cmdid)
+                {
+                    case AT_SMS_CMD:
+                        instructionParser(buf + ret + 1, len - ret - 1, mode, (void *)param);
+                        break;
+                    case AT_DEBUG_CMD:
+                        doAtdebugCmd(buf + ret + 1, len - ret - 1);
+                        break;
+                    case AT_NMEA_CMD:
+                        atCmdNmeaParser(buf + ret + 1, len - ret - 1, mode, (void *)param);
+                        break;
+
+                    case AT_IMEI_CMD:
+                        atCmdIMEIParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_NMEA_CMD :
+                        atCmdFmpcNmeaParser((uint8_t *)buf + ret + 1, len - ret - 1, mode, (void *)param);
+                        break;
+                    case AT_FMPC_BAT_CMD :
+                        atCmdFmpcBatParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_GSENSOR_CMD :
+                        atCmdFMPCgsensorParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_ACC_CMD :
+                        atCmdFmpcAccParser();
+                        break;
+                    case AT_FMPC_GSM_CMD :
+                        atCmdFmpcGsmParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_ADCCAL_CMD:
+                        atCmdFmpcAdccalParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_CSQ_CMD:
+                        atCmdFmpcCsqParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_IMSI_CMD:
+                        atCmdFmpcIMSIParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_CHKP_CMD:
+                        atCmdFmpcChkpParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_CM_CMD:
+                        atCmdFmpcCmParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_CMGET_CMD:
+                        atCmdCmGetParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_EXTVOL_CMD:
+                        atCmdFmpcExtvolParser(mode, (void *)param);
+                        break;
+                    case AT_FMPC_LDR_CMD:
+						atCmdFMPCLdrParase();
+                    	break;
+                    default:
+                        LogMessage(DEBUG_ALL, "Unknown Cmd");
+                        break;
+                }
+            }
+        }
+    }
+    else
+    {
+        createNode(buf, len, 0);
+    }
+}
+
+

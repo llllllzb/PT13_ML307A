@@ -21,7 +21,7 @@
 
 #define GPS_REQUEST_ALL					0xFFFFFFFF
 
-#define NET_REQUEST_CONNECT_ONE			0X00000001	//主动上报一次位置
+#define NET_REQUEST_CONNECT_ONE			0X00000001	//一次性连接：指连接一次网络且同时开启GPS上报完一次或上报时间结束后清除该标志位 用于1.123指令 2.sports 3.休眠到点上报
 #define NET_REQUEST_WIFI_CTL			0X00000002	//开启模组去扫描WIFI，不一定要联网
 #define NET_REQUEST_KEEPNET_CTL			0X00000004	//*保持链路常在(该状态与NET_REQUEST_OFFLINE互斥)
 #define NET_REQUEST_OFFLINE				0X00000008	//*该标志表示模组开启但不联网(该状态与NET_REQUEST_KEEPNET_CTL互斥)
@@ -208,6 +208,7 @@ void lbsRequestClear(void);
 void saveGpsHistory(void);
 void resetSafeArea(void);
 void updateModuleStatus(void);
+void changeModeFsm(uint8_t fsm);
 
 void gpsRequestSet(uint32_t flag);
 void gpsRequestClear(uint32_t flag);
@@ -219,6 +220,8 @@ void wifiCheckByStep(void);
 void motionClear(void);
 
 uint8_t gpsInWait(void);
+void gpsOpen(void);
+void gpsClose(void);
 
 void wakeUpByInt(uint8_t     type,uint8_t sec);
 

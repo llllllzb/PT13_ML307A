@@ -2,7 +2,7 @@
 #define APP_ATCMD
 
 #include <stdint.h>
-
+#include "app_instructioncmd.h"
 typedef struct
 {
 	uint16_t cmdid;
@@ -35,5 +35,6 @@ typedef enum{
 
 
 void atCmdParserFunction(uint8_t *buf, uint16_t len);
+void atCmdBleParserFun(uint8_t *buf, uint16_t len, insMode_e mode, void *param);
 
 #endif

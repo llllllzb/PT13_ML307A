@@ -14,6 +14,12 @@ void keyInit(void)
 	memset(&pwkkey, 0, sizeof(pwkkey));
 }
 
+void systemOpen(void)
+{
+	portSyspwkGpioCfg();
+	SYS_POWER_ON;
+}
+
 static int8_t shutDownId = -1;
 void systemShutDown(void)
 {
@@ -21,8 +27,7 @@ void systemShutDown(void)
 	dynamicParamSaveAll();
 	DelayMs(500);
 	SYS_POWER_OFF;	
-	GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeOut_PP_5mA);
-	GPIOB_ResetBits(SYS_PWROFF_PIN);
+	portSyspwkOffGpioCfg();
 }
 
 void systemShutDownSuccess(void)
@@ -37,6 +42,7 @@ void systemShutDownSuccess(void)
 void systemShutDownTimeout(void)
 {
 	shutDownId = -1;
+	LogPrintf(DEBUG_ALL, "systemShutDownTimeout");
 	systemShutDown();
 }
 
@@ -108,9 +114,9 @@ void systemShutDownCallback(void)
 {
 	netRequestSet(NET_REQUEST_TTS_CTL);
 	addCmdTTS(TTS_SHUTDOWN);
-	if (shutDownId != -1)
+	if (shutDownId == -1)
 	{
-		shutDownId = startTimer(300, systemShutDownTimeout, 0);
+		shutDownId = startTimer(100, systemShutDownTimeout, 0);
 	}
 	LogPrintf(DEBUG_ALL, "systemShutDownCallback");
 }

@@ -41,6 +41,7 @@ typedef struct
 }keyctrl_t;
 
 extern keyctrl_t soskey;
+void systemOpen(void);
 
 void systemShutDownSuccess(void);
 void systemShutDownTimeout(void);

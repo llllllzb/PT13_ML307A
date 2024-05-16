@@ -330,10 +330,8 @@ void privateServerConnTask(void)
 				{
 					if (privateServConn.heartbeattick % 2 == 0)
 					{
-						LogMessage(DEBUG_ALL, "111");
 						if (dbUpload() == 0)
 	                    {
-	                    	LogMessage(DEBUG_ALL, "222");
 	                        if (gpsRestoreUpload() == 0)
 	                        {
 								uploadflag = 0;

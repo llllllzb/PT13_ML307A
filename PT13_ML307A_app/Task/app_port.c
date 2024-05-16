@@ -709,16 +709,19 @@ void portSpkGpioCfg(uint8_t onoff)
 void portSyspwkGpioCfg(void)
 {
 	GPIOB_ModeCfg(SYS_POWER_PIN, GPIO_ModeOut_PP_5mA);
+	SYS_POWER_OFF;
 }
 
 /**
- * @brief   关机检测 GPIO初始化
+ * @brief   关机前必须GPIO的必须配置
  * @param
- * @return
+ * @return  否则关不了机
  */
 void portSyspwkOffGpioCfg(void)
 {
-    GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeIN_PD);
+	portUartCfg(APPUSART2, 0, 115200, NULL);
+	GPIOB_ModeCfg(SYS_PWROFF_PIN, GPIO_ModeOut_PP_5mA);
+	GPIOB_ResetBits(SYS_PWROFF_PIN);
 }
 
 

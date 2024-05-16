@@ -42,7 +42,7 @@ void dynamicParamGetAll(void)
 
 void paramDefaultInit(uint8_t level)
 {
-    LogMessage(DEBUG_ALL, "paramDefaultInit");
+    LogMessage(0, "paramDefaultInit");
     if (level == 0)
     {
         memset(&sysparam, 0, sizeof(systemParam_s));
@@ -110,12 +110,14 @@ void paramDefaultInit(uint8_t level)
     sysparam.range = 0x61;
     sysparam.smThrd = 0x60;
     sysparam.stepFliter = 0xA7;
-    sysparam.volume = 15;
+    sysparam.volume = 7;
     sysparam.mode4GapMin = 60;
     sysparam.musicfile[0] = 0;
     sysparam.musicfile[1] = 0;
     sysparam.musicfile[2] = 0;
     dynamicParam.sysOnOff = 0;
+    dynamicParam.runningtime = 0;
+    dynamicParam.step = 0;
     //appCreatePasswordBySn(dynamicParam.SN + 9);
     dynamicParamSaveAll();
     paramSaveAll();
