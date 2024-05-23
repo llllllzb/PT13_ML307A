@@ -81,6 +81,8 @@ void paramDefaultInit(uint8_t level)
         sysparam.agpsPort = 10189;
 
     }
+    strcpy(sysparam.Server, "119.23.62.73");
+    sysparam.ServerPort = 8888;
     dynamicParam.runTime = 0;
     dynamicParam.startUpCnt = 0;
     sysparam.accctlgnss = 1;

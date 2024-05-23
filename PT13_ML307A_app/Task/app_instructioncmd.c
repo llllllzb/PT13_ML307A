@@ -107,9 +107,9 @@ void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *param)
         case BLE_MODE:
         	if (param != NULL)
         	{
-        	    char debug[156] = { 0 };
+        	    char debug[171] = { 0 };
         	    uint16_t debuglen = 0;
-        		debuglen = len + 3 > 155 ? 155 : len + 3;
+        		debuglen = len + 3 > 170 ? 170 : len + 3;
         		sprintf(debug, "RE:%s", buf);
         		debug[debuglen] = 0;
 	        	insparam = (insParam_s *)param;
@@ -1328,12 +1328,13 @@ static void doSetWIFIMacInstrution(ITEM *item, char *message)
 {
 	uint8_t i, j, k, cnt;
 	char wifimac[20] = {0};
+	WIFIINFO *wifilist;
 	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
 	{
 		if (sysparam.wifiCnt != 0)
 		{
-			strcpy(message, "Wifi list:");
-			for (i = 0; i < sizeof(sysparam.wifiList) / sizeof(sysparam.wifiList[0]); i++)
+			strcpy(message, "Bind wifi mac list:");
+			for (i = 0; i < sysparam.wifiCnt; i++)
 			{
 				byteToHexString(sysparam.wifiList[i], (uint8_t *)wifimac, 12);
 				wifimac[12] = 0;
@@ -1343,6 +1344,21 @@ static void doSetWIFIMacInstrution(ITEM *item, char *message)
 		else
 		{
 			strcpy(message, "Wifi scan function is disable");
+		}
+		wifilist = getWifiInfo();
+		if (wifilist->apcount != 0)
+		{
+			strcpy(message + strlen(message), ",last scan wifi list:");
+			for (i = 0; i < wifilist->apcount; i++)
+			{
+				byteToHexString(wifilist->ap[i].ssid, (uint8_t *)wifimac, 12);
+				wifimac[12] = 0;
+				sprintf(message + strlen(message), " %s;", wifimac);
+			}
+		}
+		else
+		{
+			strcpy(message + strlen(message), ",no last scan wifi");
 		}
 	}
 	else

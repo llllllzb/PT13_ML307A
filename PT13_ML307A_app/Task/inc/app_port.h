@@ -50,10 +50,10 @@
 #define SDA_PIN         GPIO_Pin_13		//PB13
 
 //LED Éæ¼°IO
-#define LED1_PIN        GPIO_Pin_11		//PB11
+#define LED1_PIN        GPIO_Pin_10		//PB11
 #define LED1_ON         GPIOB_SetBits(LED1_PIN)
 #define LED1_OFF        GPIOB_ResetBits(LED1_PIN)
-#define LED2_PIN		GPIO_Pin_10		//PB10
+#define LED2_PIN		GPIO_Pin_11		//PB10
 #define LED2_ON			GPIOB_SetBits(LED2_PIN)
 #define LED2_OFF		GPIOB_ResetBits(LED2_PIN)
 

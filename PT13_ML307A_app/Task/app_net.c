@@ -20,6 +20,7 @@ static moduleState_s  moduleState;
 static moduleCtrl_s moduleCtrl;
 static cmdNode_s *headNode = NULL;
 static tts_fifo_s *ttsHead = NULL;
+static WIFIINFO wifiInfo;
 
 
 static void gpsUploadChangeFsm(uint8_t fsm);
@@ -1225,13 +1226,15 @@ static void qisendParser(uint8_t *buf, uint16_t len)
 
 static uint8_t wifiFenceCheck(WIFIINFO *wifiList)
 {
+#define WIFI_CHECK_LEN	5	//匹配mac地址前n位
+
 	uint8_t i, j, k, cnt = 0;
 	char debug[30] = {0};
 	for (i = 0; i < wifiList->apcount; i++)
 	{
-		for (j = 0; j < sizeof(sysparam.wifiList) / sizeof(sysparam.wifiList[0]); j++)
+		for (j = 0; j < sysparam.wifiCnt; j++)
 		{
-			for (k = 0; k < 6; k++)
+			for (k = 0; k < WIFI_CHECK_LEN; k++)
 			{
 				if (wifiList->ap[i].ssid[k] != sysparam.wifiList[j][k])
 				{
@@ -1239,7 +1242,7 @@ static uint8_t wifiFenceCheck(WIFIINFO *wifiList)
 					break;
 				}
 			}
-			if (k == 6)
+			if (k == WIFI_CHECK_LEN)
 			{
 				byteToHexString(wifiList->ap[i].ssid, debug, 12);
 				debug[12] = 0;
@@ -1302,14 +1305,13 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
     int16_t relen;
     char restore[50];
     uint8_t numb;
-    WIFIINFO wifiList;
     
     rebuf = buf;
     relen = len;
     index = my_getstrindex((char *)rebuf, "+MWIFISCANINFO:", relen);
     if (index < 0)
     	return;
-    wifiList.apcount = 0;
+    wifiInfo.apcount = 0;
     while (index >= 0)
     {
     	sysinfo.outputLockTick = 75;	//解锁
@@ -1333,7 +1335,7 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 				}
 				
 				/* 表示本次扫描为空,再扫一次 */
-				if (wifiList.apcount == 0)
+				if (wifiInfo.apcount == 0)
 				{
 					LogPrintf(DEBUG_BLE, "Wifi Null, try again:%d", sysinfo.wifiScanCnt);
 					if (sysinfo.wifiScanCnt > 0)
@@ -1347,7 +1349,7 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 					}
 					return;
 				}
-	            if (wifiFenceCheck(&wifiList) == 0)
+	            if (wifiFenceCheck(&wifiInfo) == 0)
 	            {
 	            	LogPrintf(DEBUG_ALL, "Not in wifi fence:%d", sysinfo.wifiScanCnt);
 	            	if (sysinfo.wifiScanCnt > 0)
@@ -1385,37 +1387,37 @@ static void mwifiscaninfoParser(uint8_t *buf, uint16_t len)
 		index = getCharIndex(rebuf, relen, '"');
 		if (index < 0 || index > 13)
 			break;
-        if (numb != 0 && wifiList.apcount < WIFIINFOMAX)
+        if (numb != 0 && wifiInfo.apcount < WIFIINFOMAX)
         {
             memcpy(restore, rebuf, index);
             restore[index] = 0;
             LogPrintf(DEBUG_ALL, "WIFI(%d):[%s]", numb, restore);
-            wifiList.ap[wifiList.apcount].signal = 0;
-            changeHexStringToByteArray(wifiList.ap[wifiList.apcount].ssid, restore, 6);
-            wifiList.apcount++;
+            wifiInfo.ap[wifiInfo.apcount].signal = 0;
+            changeHexStringToByteArray(wifiInfo.ap[wifiInfo.apcount].ssid, restore, 6);
+            wifiInfo.apcount++;
         }
         index = getCharIndex(rebuf, relen, '\r');
         rebuf += index;
         relen -= index;
         index = my_getstrindex((char *)rebuf, "+MWIFISCANINFO:", relen);
     }
-	if (wifiList.apcount != 0)
+	if (wifiInfo.apcount != 0)
     {
         if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_MY)
         {
-			jt808UpdateWifiinfo(&wifiList);
-            protocolSend(NORMAL_LINK, PROTOCOL_F3, &wifiList);
+			jt808UpdateWifiinfo(&wifiInfo);
+            protocolSend(NORMAL_LINK, PROTOCOL_F3, &wifiInfo);
             jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
             sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_MY;
         }
         if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_BLE)
         {
-            protocolSend(BLE_LINK, PROTOCOL_F3, &wifiList);
+            protocolSend(BLE_LINK, PROTOCOL_F3, &wifiInfo);
             sysinfo.wifiExtendEvt &= ~DEV_EXTEND_OF_BLE;
         }
         if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_FENCE)
         {
-            if (wifiFenceCheck(&wifiList) == 0)
+            if (wifiFenceCheck(&wifiInfo) == 0)
             {
             	LogPrintf(DEBUG_ALL, "Not in wifi fence");
 				if (sysinfo.outWifiFenceFlag == 0)
@@ -2949,6 +2951,18 @@ uint32_t getTcpNack(void)
 char *getQgmr(void)
 {
 //    return moduleState.qgmr;
+}
+
+/**************************************************
+@bref       获取历史扫描的wifi信息
+@param
+@return
+@note
+**************************************************/
+
+WIFIINFO *getWifiInfo(void)
+{
+	return &wifiInfo;
 }
 
 

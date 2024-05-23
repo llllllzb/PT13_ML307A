@@ -232,6 +232,7 @@ uint8_t isAgpsDataRecvComplete(void);
 void changeMode4Callback(void);
 uint8_t isModuleOfflineStatus(void);
 
+WIFIINFO *getWifiInfo(void);
 
 uint8_t getModuleRssi(void);
 uint8_t *getModuleIMSI(void);
